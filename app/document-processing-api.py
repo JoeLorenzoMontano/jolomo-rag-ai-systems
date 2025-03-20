@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Dict, Any
 import chromadb
 import os
+import requests
 from utils.ollama_client import OllamaClient
 
 # Initialize FastAPI app
@@ -18,47 +19,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Initialize ChromaDB client
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 
-# Try multiple connection methods to ChromaDB
-for attempt in range(3):
+# Attempt to connect to ChromaDB using the newer client API
+print(f"Connecting to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}")
+try:
+    # Try HTTP connection first with modern client API
+    from chromadb.config import Settings
+    
+    chroma_settings = Settings(
+        chroma_api_impl="rest",
+        chroma_server_host=CHROMA_HOST,
+        chroma_server_http_port=CHROMA_PORT
+    )
+    
+    chroma_client = chromadb.Client(chroma_settings)
+    chroma_client.heartbeat()
+    print("Connected to ChromaDB via HTTP using the modern client API")
+except Exception as e:
+    print(f"HTTP connection failed with modern API: {e}")
     try:
-        # First try HTTP client connection
-        print(f"Attempt {attempt+1}: Connecting to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}")
+        # Fallback to direct HTTP client
         chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
         chroma_client.heartbeat()
-        print("Connected to ChromaDB via HTTP")
-        break
-    except Exception as e:
-        print(f"HTTP connection failed: {e}")
-        if attempt == 0:
-            # Try standard port
-            CHROMA_PORT = 8000
-        elif attempt == 1:
-            # Try local persistent client
-            try:
-                chroma_db_path = "./chroma_db"
-                print(f"Attempting local PersistentClient at {chroma_db_path}")
-                chroma_client = chromadb.PersistentClient(path=chroma_db_path)
-                print("Using local PersistentClient")
-                break
-            except Exception as e2:
-                print(f"PersistentClient failed: {e2}")
-        # If all attempts failed, use in-memory client
-        if attempt == 2:
-            print("All connection attempts failed. Using in-memory client.")
-            chroma_client = chromadb.Client()
+        print("Connected to ChromaDB via legacy HTTP client")
+    except Exception as e2:
+        print(f"HTTP client connection failed: {e2}")
+        # Final fallback to in-memory
+        print("All connection attempts failed. Using in-memory client for development/testing.")
+        chroma_client = chromadb.EphemeralClient()
 
 # Create or get collection
 db_collection = chroma_client.get_or_create_collection(
-    name="documents",
-    embedding_function=None  # We provide our own embeddings
+    name="documents"
 )
 
 # Initialize Ollama Client
 ollama_client = OllamaClient()
+
+# Health check endpoints
+@app.get("/", summary="Root endpoint", description="Returns a simple message indicating the API is running.")
+async def root():
+    return {"message": "Document Processing API is running"}
+
+@app.get("/health", summary="Health check", description="Checks if all components are operational.")
+async def health_check():
+    health_status = {
+        "api": "healthy",
+        "chroma": "unknown",
+        "ollama": "unknown"
+    }
+    
+    # Check ChromaDB
+    try:
+        chroma_client.heartbeat()
+        health_status["chroma"] = "healthy"
+    except Exception as e:
+        health_status["chroma"] = f"unhealthy: {str(e)}"
+    
+    # Check Ollama
+    try:
+        response = requests.get(f"{ollama_client.base_url}/api/tags", timeout=2)
+        if response.status_code == 200:
+            health_status["ollama"] = "healthy"
+        else:
+            health_status["ollama"] = f"unhealthy: status code {response.status_code}"
+    except Exception as e:
+        health_status["ollama"] = f"unhealthy: {str(e)}"
+    
+    return health_status
 
 # Folder to store raw documents
 DOCS_FOLDER = "./data"
@@ -116,23 +148,51 @@ async def process_documents():
 
 @app.get("/query", summary="Retrieve relevant documents", description="Query ChromaDB for the most relevant document based on input text.")
 async def query_documents(query: str):
-    query_embedding = ollama_client.generate_embedding(query)
-    results = db_collection.query(query_embeddings=[query_embedding], n_results=3)
-    
-    if not results["documents"] or not results["documents"][0]:
-        raise HTTPException(status_code=404, detail="No relevant documents found.")
-    
-    best_match = results["documents"][0][0] if isinstance(results["documents"][0], list) else results["documents"][0]
-    response = ollama_client.generate_response(context=best_match, query=query)
-    
-    # Clean up the response for better frontend rendering
-    cleaned_results = {
-        "documents": results["documents"],
-        "ids": results["ids"],
-        "metadatas": results["metadatas"]
-    }
-    
-    return {"query": query, "response": response, "sources": cleaned_results}
+    try:
+        query_embedding = ollama_client.generate_embedding(query)
+        results = db_collection.query(query_embeddings=[query_embedding], n_results=3)
+        
+        # Handle various result formats from different ChromaDB versions
+        if not results["documents"]:
+            raise HTTPException(status_code=404, detail="No relevant documents found.")
+        
+        # Safely get the best matching document
+        first_result = results["documents"][0]
+        best_match = ""
+        
+        if isinstance(first_result, list) and first_result:
+            best_match = first_result[0]
+        elif isinstance(first_result, str):
+            best_match = first_result
+        else:
+            print(f"Unexpected result format: {type(first_result)}")
+            best_match = str(first_result)
+            
+        # Generate a response based on the best match
+        response = ollama_client.generate_response(context=best_match, query=query)
+        
+        # Clean up the response for better frontend rendering
+        cleaned_results = {
+            "documents": results["documents"],
+            "ids": results["ids"],
+            "metadatas": results.get("metadatas", [{}] * len(results["ids"]))
+        }
+        
+        return {
+            "query": query, 
+            "response": response, 
+            "sources": cleaned_results,
+            "status": "success"
+        }
+    except Exception as e:
+        print(f"Error in query_documents: {e}")
+        return {
+            "query": query,
+            "response": f"An error occurred while processing your query: {str(e)}",
+            "sources": {"documents": [], "ids": [], "metadatas": []},
+            "status": "error",
+            "error": str(e)
+        }
 
 # Custom OpenAPI documentation
 @app.get("/openapi.json", include_in_schema=False)

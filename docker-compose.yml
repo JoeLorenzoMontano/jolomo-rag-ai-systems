@@ -17,7 +17,7 @@ services:
       - MODEL=llama2
 
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.4.18
     container_name: chromadb
     restart: always
     volumes:
@@ -25,9 +25,9 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - CHROMA_DB_IMPL=duckdb+parquet
-      - CHROMA_DB_DIR=/chroma/chroma
-      - PERSIST_DIRECTORY=/chroma/chroma
+      - IS_PERSISTENT=TRUE
+      - ALLOW_RESET=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
 
   ollama:
     image: ollama/ollama:latest
