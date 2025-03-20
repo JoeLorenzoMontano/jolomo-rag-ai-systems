@@ -40,15 +40,6 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_MODELS=/root/.ollama/models
-    # Command to pull a model as soon as the container starts
-    command: >
-      sh -c "
-        ollama serve &
-        sleep 5
-        ollama pull nomic-embed-text && 
-        ollama pull llama2 && 
-        wait
-      "
 
 volumes:
   chromadb_data:

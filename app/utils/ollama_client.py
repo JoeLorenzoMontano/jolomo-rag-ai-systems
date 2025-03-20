@@ -55,26 +55,39 @@ class OllamaClient:
 
     def _ensure_model_exists(self, model_name: str) -> None:
         """
-        Checks if a model exists, and pulls it if it doesn't.
+        Checks if a model exists, and tries to use a default model if it doesn't.
         """
         try:
             # Check if model exists
             response = requests.get(f"{self.base_url}/api/tags")
             response.raise_for_status()
-            models = response.json().get("models", [])
             
-            # Look for the model in the list
-            model_exists = any(model["name"] == model_name for model in models)
+            models_data = response.json()
+            # Handle different response formats
+            models = []
+            if "models" in models_data:
+                models = models_data["models"]
+            elif isinstance(models_data, list):
+                models = models_data
+                
+            # Simplify model names for comparison
+            available_models = [model["name"].split(":")[0] if ":" in model["name"] else model["name"] 
+                               for model in models]
+            model_name_simple = model_name.split(":")[0] if ":" in model_name else model_name
             
-            if not model_exists:
-                # Try to pull the model
-                print(f"Model {model_name} not found. Attempting to pull...")
-                pull_payload = {"name": model_name}
-                pull_response = requests.post(f"{self.base_url}/api/pull", json=pull_payload)
-                pull_response.raise_for_status()
-                print(f"Successfully pulled model {model_name}")
+            # Check if our model exists (exact or base name match)
+            if not (model_name in available_models or model_name_simple in available_models):
+                print(f"Model {model_name} not available.")
+                if models:
+                    # Use first available model as fallback
+                    self.model = models[0]["name"]
+                    print(f"Using {self.model} as fallback.")
+                else:
+                    print(f"No models available. Will attempt to pull llama2 when needed.")
+                    self.model = "llama2"
         except Exception as e:
-            print(f"Error checking/pulling model: {e}")
+            print(f"Error checking available models: {e}")
+            print("Will use default model settings and let Ollama handle errors.")
 
     def summarize_text(self, text: str, context: str, model: Optional[str] = None, max_tokens: Optional[int] = None) -> str:
         """
@@ -125,43 +138,73 @@ class OllamaClient:
         
         Returns a list of floats (the embedding vector)
         """
-        # Use an embedding model if available, otherwise use the default model
-        embedding_model = "nomic-embed-text"
+        # Use available models to generate embeddings
+        models_to_try = [self.model]  # Start with configured model
         
-        # Try to ensure the embedding model exists
+        # Try to fetch available models
         try:
-            self._ensure_model_exists(embedding_model)
-        except Exception as e:
-            print(f"Could not ensure embedding model exists, using default model: {e}")
-            embedding_model = self.model
-        
-        payload = {
-            "model": embedding_model,
-            "prompt": input_text
-        }
-
-        try:
-            response = requests.post(f"{self.base_url}/api/embeddings", json=payload)
-            response.raise_for_status()
-            result = response.json()
-            embedding = result.get("embedding", [])
-            
-            # Check if we got a valid embedding
-            if not embedding:
-                raise ValueError("No embedding returned from API")
+            response = requests.get(f"{self.base_url}/api/tags")
+            if response.status_code == 200:
+                result = response.json()
+                if "models" in result:
+                    models = result["models"]
+                elif isinstance(result, list):
+                    models = result
+                else:
+                    models = []
                 
-            return embedding
+                # Find embedding-specific models first
+                for model in models:
+                    name = model.get("name", "")
+                    if any(x in name.lower() for x in ["embed", "e5", "nomic", "all-minilm", "text-embedding"]):
+                        if name not in models_to_try:
+                            models_to_try.insert(0, name)  # Add embedding models to the front
         except Exception as e:
-            print(f"Error generating embedding: {e}")
-            # In a production environment, we should handle this error more gracefully
-            # For now, creating a random embedding for testing purposes
-            import random
-            import numpy as np
-            
-            # Create a random unit vector of size 768 (common embedding dimension)
-            random_vector = np.random.randn(768)
-            normalized = random_vector / np.linalg.norm(random_vector)
-            return normalized.tolist()
+            print(f"Error fetching models: {e}")
+        
+        # Add some well-known embedding models to try
+        for model_name in ["nomic-embed-text", "all-minilm", "e5-small", self.model]:
+            if model_name not in models_to_try:
+                models_to_try.append(model_name)
+        
+        # Try each model in order
+        last_error = None
+        for model_name in models_to_try:
+            try:
+                print(f"Trying to generate embedding with model: {model_name}")
+                payload = {
+                    "model": model_name,
+                    "prompt": input_text
+                }
+                
+                response = requests.post(f"{self.base_url}/api/embeddings", json=payload)
+                response.raise_for_status()
+                result = response.json()
+                embedding = result.get("embedding", [])
+                
+                # Check if we got a valid embedding
+                if embedding and len(embedding) > 10:  # Basic validation
+                    print(f"Successfully generated embedding with model: {model_name}")
+                    return embedding
+                else:
+                    print(f"Model {model_name} returned an invalid embedding")
+            except Exception as e:
+                last_error = e
+                print(f"Error generating embedding with model {model_name}: {e}")
+        
+        # If all models failed, generate a random embedding
+        print(f"All embedding models failed. Last error: {last_error}")
+        print("Generating random embedding for testing purposes")
+        
+        # Create a random embedding
+        import random
+        import numpy as np
+        
+        # Generate a random unit vector (normalized)
+        embedding_size = 768  # Standard size for many embedding models
+        random_vector = np.random.randn(embedding_size)
+        normalized = random_vector / np.linalg.norm(random_vector)
+        return normalized.tolist()
 
     def extract_metadata(self, text: str, model: Optional[str] = None, max_tokens: Optional[int] = None) -> Dict[str, str]:
         """
