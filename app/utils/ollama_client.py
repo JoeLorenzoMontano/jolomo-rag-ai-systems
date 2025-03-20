@@ -131,73 +131,78 @@ class OllamaClient:
     def generate_embedding(self, input_text: str) -> List[float]:
         """
         Generates an embedding for the given input text using the Ollama API.
-        
-        According to the Ollama API docs, the /api/embeddings endpoint expects:
-        - model: name of the model to use
-        - prompt: text to generate embeddings for
+        Tries multiple API endpoints and fallback strategies to ensure we get a usable embedding.
         
         Returns a list of floats (the embedding vector)
         """
-        # Use available models to generate embeddings
-        models_to_try = [self.model]  # Start with configured model
+        # Only try the current model for simplicity
+        model_name = self.model
         
-        # Try to fetch available models
-        try:
-            response = requests.get(f"{self.base_url}/api/tags")
-            if response.status_code == 200:
-                result = response.json()
-                if "models" in result:
-                    models = result["models"]
-                elif isinstance(result, list):
-                    models = result
-                else:
-                    models = []
-                
-                # Find embedding-specific models first
-                for model in models:
-                    name = model.get("name", "")
-                    if any(x in name.lower() for x in ["embed", "e5", "nomic", "all-minilm", "text-embedding"]):
-                        if name not in models_to_try:
-                            models_to_try.insert(0, name)  # Add embedding models to the front
-        except Exception as e:
-            print(f"Error fetching models: {e}")
-        
-        # Add some well-known embedding models to try
-        for model_name in ["nomic-embed-text", "all-minilm", "e5-small", self.model]:
-            if model_name not in models_to_try:
-                models_to_try.append(model_name)
-        
-        # Try each model in order
-        last_error = None
-        for model_name in models_to_try:
-            try:
-                print(f"Trying to generate embedding with model: {model_name}")
-                payload = {
+        # API endpoints to try in order
+        endpoints = [
+            # First try /api/embed endpoint (newer Ollama versions)
+            {
+                "url": f"{self.base_url}/api/embed",
+                "payload": {
                     "model": model_name,
                     "prompt": input_text
-                }
-                
-                # Use the /api/embed endpoint (not /api/embeddings)
-                response = requests.post(f"{self.base_url}/api/embed", json=payload)
-                response.raise_for_status()
+                },
+                "name": "/api/embed"
+            },
+            # Then try /api/embeddings endpoint (some versions)
+            {
+                "url": f"{self.base_url}/api/embeddings",
+                "payload": {
+                    "model": model_name,
+                    "prompt": input_text
+                },
+                "name": "/api/embeddings"
+            },
+            # Finally try /api/generate with embedding_only option
+            {
+                "url": f"{self.base_url}/api/generate",
+                "payload": {
+                    "model": model_name,
+                    "prompt": input_text,
+                    "options": {
+                        "embedding_only": True
+                    }
+                },
+                "name": "/api/generate with embedding_only"
+            }
+        ]
+            
+        # Try each endpoint
+        for endpoint in endpoints:
+            try:
+                print(f"Trying to generate embedding with endpoint: {endpoint['name']}")
+                response = requests.post(endpoint["url"], json=endpoint["payload"])
+                if response.status_code != 200:
+                    print(f"Endpoint {endpoint['name']} returned status {response.status_code}")
+                    continue
+                    
                 result = response.json()
-                embedding = result.get("embedding", [])
+                # Different endpoints return embeddings in different formats
+                if "embedding" in result:
+                    embedding = result["embedding"]
+                elif "data" in result and len(result["data"]) > 0 and "embedding" in result["data"][0]:
+                    embedding = result["data"][0]["embedding"]
+                else:
+                    print(f"No embedding found in response from {endpoint['name']}")
+                    continue
                 
                 # Check if we got a valid embedding
                 if embedding and len(embedding) > 10:  # Basic validation
-                    print(f"Successfully generated embedding with model: {model_name}")
+                    print(f"Successfully generated embedding with endpoint {endpoint['name']}")
                     return embedding
                 else:
-                    print(f"Model {model_name} returned an invalid embedding")
+                    print(f"Endpoint {endpoint['name']} returned invalid embedding")
             except Exception as e:
-                last_error = e
-                print(f"Error generating embedding with model {model_name}: {e}")
+                print(f"Error with endpoint {endpoint['name']}: {e}")
         
-        # If all models failed, generate a random embedding
-        print(f"All embedding models failed. Last error: {last_error}")
-        print("Generating random embedding for testing purposes")
+        # All API endpoints failed, generate a random embedding for testing
+        print("All embedding endpoints failed. Generating random embedding for testing.")
         
-        # Create a random embedding
         import random
         import numpy as np
         
