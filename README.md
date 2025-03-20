@@ -85,11 +85,53 @@ export EMBEDDING_MODEL=nomic-embed-text  # For generating embeddings
 docker-compose up -d
 ```
 
+#### Document Chunking
+
+The application supports document chunking for improved retrieval performance. Chunking divides large documents into smaller pieces with some overlap, which helps make embeddings more focused and retrieval more accurate.
+
+You can configure chunking with the following options:
+
+```bash
+# Using the run script
+./run.sh --chunk-size 1500 --chunk-overlap 150 --min-chunk-size 300
+./run.sh --no-chunking  # To disable chunking
+
+# Or with environment variables
+export ENABLE_CHUNKING=true     # Enable/disable chunking (default: true)
+export MAX_CHUNK_SIZE=1000      # Maximum characters per chunk (default: 1000)
+export MIN_CHUNK_SIZE=200       # Minimum size for a chunk (default: 200)
+export CHUNK_OVERLAP=100        # Overlap between chunks (default: 100)
+
+# Then run docker-compose
+docker-compose up -d
+```
+
+You can also override chunking settings when processing documents through the API:
+
+```bash
+# Override chunking settings for a specific processing run
+curl -X POST "http://localhost:8000/process?chunk_size=1500&min_size=300&overlap=150"
+
+# Disable chunking for a specific run
+curl -X POST "http://localhost:8000/process?enable_chunking=false"
+```
+
 ### API Endpoints
 
 - **POST /process**: Processes all documents in the `rag-documents` directory and stores their embeddings in ChromaDB
+  - Optional query parameters:
+    - `chunk_size`: Override max chunk size
+    - `min_size`: Override min chunk size
+    - `overlap`: Override chunk overlap
+    - `enable_chunking`: Override chunking enabled setting (true/false)
+  
 - **GET /query?query=YOUR_QUERY**: Returns a response based on the most relevant documents matching your query
+  - Optional query parameters:
+    - `n_results`: Number of results to return (default: 3)
+    - `combine_chunks`: Whether to combine chunks from the same document (default: true)
+
 - **GET /health**: Returns detailed health status of all services and components
+
 - **POST /test-embedding?text=YOUR_TEXT**: Tests the embedding functionality with custom text (useful for debugging)
 
 ### Example Usage

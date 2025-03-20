@@ -10,6 +10,12 @@ GPU_MODE="shared"
 MODEL="llama2"
 EMBEDDING_MODEL="all-minilm:l6-v2"
 
+# Document chunking settings
+ENABLE_CHUNKING=true
+MAX_CHUNK_SIZE=1000
+MIN_CHUNK_SIZE=200
+CHUNK_OVERLAP=100
+
 # Usage help
 show_help() {
     echo "Usage: ./run.sh [OPTIONS]"
@@ -23,11 +29,20 @@ show_help() {
     echo "  --gpu-mode MODE     Set GPU mode to 'shared' or 'exclusive' (default: shared)"
     echo "  --model NAME        Model to use for responses (default: llama2)"
     echo "  --embedding-model NAME Model to use for embeddings (default: all-minilm:l6-v2)"
+    echo ""
+    echo "  # Document Chunking Options"
+    echo "  --no-chunking       Disable document chunking (default: enabled)"
+    echo "  --chunk-size N      Maximum size of document chunks (default: 1000 chars)"
+    echo "  --min-chunk-size N  Minimum size of document chunks (default: 200 chars)"
+    echo "  --chunk-overlap N   Overlap between chunks (default: 100 chars)"
+    echo ""
     echo "  --help              Show this help message"
     echo ""
     echo "Examples:"
     echo "  ./run.sh --gpu --gpu-device 0 --gpu-layers 35"
     echo "  ./run.sh --model mistral --embedding-model nomic-embed-text"
+    echo "  ./run.sh --chunk-size 1500 --chunk-overlap 200"
+    echo "  ./run.sh --no-chunking"
     exit 0
 }
 
@@ -60,6 +75,23 @@ while [[ $# -gt 0 ]]; do
             ;;
         --embedding-model)
             EMBEDDING_MODEL="$2"
+            shift 2
+            ;;
+        # Document chunking options
+        --no-chunking)
+            ENABLE_CHUNKING=false
+            shift
+            ;;
+        --chunk-size)
+            MAX_CHUNK_SIZE="$2"
+            shift 2
+            ;;
+        --min-chunk-size)
+            MIN_CHUNK_SIZE="$2"
+            shift 2
+            ;;
+        --chunk-overlap)
+            CHUNK_OVERLAP="$2"
             shift 2
             ;;
         --help)
@@ -100,6 +132,17 @@ export EMBEDDING_MODEL="$EMBEDDING_MODEL"
 echo "Using models:"
 echo "   Response model: $MODEL"
 echo "   Embedding model: $EMBEDDING_MODEL"
+
+# Export chunking settings
+export ENABLE_CHUNKING="$ENABLE_CHUNKING"
+export MAX_CHUNK_SIZE="$MAX_CHUNK_SIZE"
+export MIN_CHUNK_SIZE="$MIN_CHUNK_SIZE"
+export CHUNK_OVERLAP="$CHUNK_OVERLAP"
+echo "Document chunking settings:"
+echo "   Chunking enabled: $ENABLE_CHUNKING"
+echo "   Max chunk size: $MAX_CHUNK_SIZE chars"
+echo "   Min chunk size: $MIN_CHUNK_SIZE chars"
+echo "   Chunk overlap: $CHUNK_OVERLAP chars"
 
 # Check if docker-compose is running
 echo "Checking if services are already running..."

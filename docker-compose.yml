@@ -16,6 +16,11 @@ services:
       - CHROMA_PORT=8000
       - MODEL=llama2
       - EMBEDDING_MODEL=all-minilm:l6-v2
+      # Document chunking settings
+      - ENABLE_CHUNKING=true
+      - MAX_CHUNK_SIZE=1000
+      - MIN_CHUNK_SIZE=200
+      - CHUNK_OVERLAP=100
     networks:
       - app-network
 
