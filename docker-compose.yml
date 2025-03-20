@@ -19,7 +19,7 @@ services:
       - app-network
 
   chromadb:
-    image: chromadb/chroma:0.4.15
+    image: ghcr.io/chroma-core/chroma:latest
     container_name: chromadb
     restart: always
     volumes:
@@ -30,6 +30,9 @@ services:
       - IS_PERSISTENT=TRUE
       - ALLOW_RESET=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
+      - CHROMA_SERVER_NOFILE=65535
+      # Pin NumPy to avoid compatibility issues
+      - NUMPY_VERSION=1.26.0
     networks:
       - app-network
 

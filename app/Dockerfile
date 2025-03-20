@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y curl iputils-ping && rm -rf /var/lib/ap
 # Copy the requirements file to the container
 COPY requirements.txt ./
 
-# Install dependencies
+# Install dependencies with fixed versions to avoid compatibility issues
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire application code into the container

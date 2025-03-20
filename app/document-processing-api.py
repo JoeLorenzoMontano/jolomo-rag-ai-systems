@@ -24,67 +24,53 @@ app.add_middleware(
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 
+# Connect to ChromaDB with simple connection and retry logic
+max_retries = 5
+retry_delay = 3  # seconds
+
 print(f"Connecting to ChromaDB at http://{CHROMA_HOST}:{CHROMA_PORT}")
 
-# Connect to ChromaDB with multiple approaches to handle version differences
-# ChromaDB 0.4.15 may have different API endpoints than what the latest client expects
-max_retries = 3
-retry_delay = 2  # seconds
+# Create connection settings 
+from chromadb.config import Settings
 
-# First try: Use API v1 compatibility settings
-try:
-    print("Trying ChromaDB connection with API v1 compatibility mode")
-    from chromadb.config import Settings
-    
-    settings = Settings(
-        chroma_api_impl="rest",
-        chroma_server_host=CHROMA_HOST,
-        chroma_server_http_port=CHROMA_PORT,
-        chroma_server_ssl_enabled=False
-    )
-    
-    # Add API version settings to force v1 compatibility
-    settings.chroma_server_headers = {"accept": "application/json", "X-API-Version": "v1"}
-    
-    chroma_client = chromadb.Client(settings)
-    # Test connection
-    chroma_client.heartbeat()
-    print("Successfully connected to ChromaDB using API v1 compatibility mode")
-except Exception as e:
-    print(f"API v1 compatibility connection failed: {e}")
-    
-    # Second try: Use system environment with direct API
+settings = Settings(
+    chroma_api_impl="rest",
+    chroma_server_host=CHROMA_HOST,
+    chroma_server_http_port=CHROMA_PORT,
+)
+
+# Try connection with retry logic
+for attempt in range(max_retries):
     try:
-        print("Trying ChromaDB connection with system environment settings")
-        import os
-        
-        # Set environment variables to influence client behavior
-        os.environ["CHROMA_API_IMPL"] = "rest"
-        os.environ["CHROMA_SERVER_HOST"] = CHROMA_HOST
-        os.environ["CHROMA_SERVER_HTTP_PORT"] = str(CHROMA_PORT)
-        
-        # Use the basic client which should adapt to the environment
-        chroma_client = chromadb.Client()
-        # Test connection
+        print(f"Connection attempt {attempt + 1} to ChromaDB...")
+        chroma_client = chromadb.HttpClient(
+            host=CHROMA_HOST,
+            port=CHROMA_PORT,
+            ssl=False,
+        )
+        # Test connection with heartbeat
         chroma_client.heartbeat()
-        print("Successfully connected to ChromaDB using system environment")
-    except Exception as e:
-        print(f"System environment connection failed: {e}")
+        print(f"Successfully connected to ChromaDB on attempt {attempt + 1}")
         
-        # Third try: Use persistent client (runs locally)
+        # Get server version
         try:
-            print("Falling back to persistent local database")
-            chroma_client = chromadb.PersistentClient(path="/tmp/chroma_db")
-            # Test connection
-            chroma_client.heartbeat()
-            print("Successfully created local persistent ChromaDB")
-        except Exception as e:
-            print(f"Persistent client creation failed: {e}")
+            server_info = chroma_client._server_state()
+            print(f"ChromaDB server version: {server_info.get('version', 'unknown')}")
+        except:
+            print("Could not get ChromaDB server version")
             
-            # Final fallback: Use in-memory client
-            print("All connection attempts failed. Using in-memory database as last resort")
+        break
+    except Exception as e:
+        print(f"Connection attempt {attempt + 1} failed: {str(e)}")
+        if attempt < max_retries - 1:
+            print(f"Retrying in {retry_delay} seconds...")
+            import time
+            time.sleep(retry_delay)
+        else:
+            print("All connection attempts failed. Falling back to in-memory database.")
+            print("WARNING: Data will not be persisted between restarts!")
             chroma_client = chromadb.EphemeralClient()
-            print("Using in-memory ChromaDB (data will be lost on restart)")
+            print("Using in-memory ChromaDB")
 
 # Create or get collection with proper settings
 try:
