@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple startup script for debugging
+# Startup script with Ollama model check
 
 echo "Starting Document Processing API..."
 echo "Environment variables:"
@@ -14,6 +14,43 @@ echo "Trying to reach Ollama..."
 ping -c 1 ollama || echo "Cannot ping Ollama"
 echo "Trying to reach ChromaDB..."
 ping -c 1 chromadb || echo "Cannot ping ChromaDB"
+
+# Wait for Ollama to be fully available
+echo "Waiting for Ollama to be ready..."
+for i in {1..30}; do
+  if curl -s "${OLLAMA_BASE_URL}/api/tags" > /dev/null; then
+    echo "Ollama is ready!"
+    break
+  fi
+  echo "Ollama not ready yet, waiting..."
+  sleep 2
+  if [ $i -eq 30 ]; then
+    echo "Timed out waiting for Ollama"
+  fi
+done
+
+# Check available Ollama models
+echo "Checking Ollama models..."
+curl -s "${OLLAMA_BASE_URL}/api/tags"
+
+# Make sure our main model is available
+echo "Ensuring main model (${MODEL}) is available..."
+curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${MODEL}\"}"
+
+# Test embed endpoint with the model
+echo "Testing /api/embed endpoint with ${MODEL}:"
+EMBED_TEST=$(curl -s -X POST "${OLLAMA_BASE_URL}/api/embed" -d "{\"model\":\"${MODEL}\",\"prompt\":\"test\"}")
+if echo "$EMBED_TEST" | grep -q "embedding"; then
+  echo "Embedding API working correctly!"
+else
+  echo "WARNING: Embedding API test failed. Response:"
+  echo "$EMBED_TEST"
+fi
+
+# Test generate endpoint
+echo "Testing /api/generate endpoint with ${MODEL}:"
+curl -s -X POST "${OLLAMA_BASE_URL}/api/generate" -d "{\"model\":\"${MODEL}\",\"prompt\":\"test\"}" | head -c 100
+echo
 
 # Start the actual application
 echo "Starting the API..."

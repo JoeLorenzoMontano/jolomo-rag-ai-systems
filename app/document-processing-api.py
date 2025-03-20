@@ -24,52 +24,30 @@ app.add_middleware(
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 
-# Try to connect to ChromaDB, with multiple fallback options
-print(f"Connecting to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}")
+print(f"Connecting to ChromaDB at http://{CHROMA_HOST}:{CHROMA_PORT}")
 
-# Try approach 1: Modern client API
-try:
-    from chromadb.config import Settings
-    
-    chroma_settings = Settings(
-        chroma_api_impl="rest",
-        chroma_server_host=CHROMA_HOST,
-        chroma_server_http_port=CHROMA_PORT
-    )
-    
-    chroma_client = chromadb.Client(chroma_settings)
-    chroma_client.heartbeat()
-    print("Successfully connected to ChromaDB using modern REST API")
-except Exception as e:
-    print(f"Modern REST API connection failed: {e}")
-    
-    # Try approach 2: Direct HTTP client
+# Connect to ChromaDB with retry logic
+max_retries = 5
+retry_delay = 2  # seconds
+
+for attempt in range(max_retries):
     try:
+        # Use the HttpClient which is the most reliable for server connections
         chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
-        chroma_client.heartbeat()
-        print("Successfully connected to ChromaDB using HTTP client")
-    except Exception as e:
-        print(f"HTTP client connection failed: {e}")
         
-        # Try approach 3: Explicit URL
-        try:
-            chroma_client = chromadb.HttpClient(url=f"http://{CHROMA_HOST}:{CHROMA_PORT}")
-            chroma_client.heartbeat()
-            print("Successfully connected to ChromaDB using explicit URL")
-        except Exception as e:
-            print(f"Explicit URL connection failed: {e}")
-            
-            # Try approach 4: Default port
-            try:
-                chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=8000)
-                chroma_client.heartbeat()
-                print("Successfully connected to ChromaDB using default port 8000")
-            except Exception as e:
-                print(f"Default port connection failed: {e}")
-                
-                # Final fallback: In-memory client
-                print("All connection attempts failed. Using in-memory client for testing purposes.")
-                chroma_client = chromadb.EphemeralClient()
+        # Verify connection with a heartbeat
+        chroma_client.heartbeat()
+        print(f"Successfully connected to ChromaDB on attempt {attempt + 1}")
+        break
+    except Exception as e:
+        print(f"Connection attempt {attempt + 1} failed: {e}")
+        if attempt < max_retries - 1:
+            print(f"Retrying in {retry_delay} seconds...")
+            import time
+            time.sleep(retry_delay)
+        else:
+            print("All connection attempts failed. Raising exception.")
+            raise RuntimeError(f"Could not connect to ChromaDB at http://{CHROMA_HOST}:{CHROMA_PORT} after {max_retries} attempts")
 
 # Create or get collection
 db_collection = chroma_client.get_or_create_collection(

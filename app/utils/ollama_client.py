@@ -131,86 +131,39 @@ class OllamaClient:
     def generate_embedding(self, input_text: str) -> List[float]:
         """
         Generates an embedding for the given input text using the Ollama API.
-        Tries multiple API endpoints and fallback strategies to ensure we get a usable embedding.
         
-        Returns a list of floats (the embedding vector)
+        According to the Ollama API docs:
+        POST /api/embed
+        
+        Returns a list of floats (the embedding vector).
         """
-        # Only try the current model for simplicity
+        # Use the standard model as it should be loaded
         model_name = self.model
         
-        # API endpoints to try in order
-        endpoints = [
-            # First try /api/embed endpoint (newer Ollama versions)
-            {
-                "url": f"{self.base_url}/api/embed",
-                "payload": {
-                    "model": model_name,
-                    "prompt": input_text
-                },
-                "name": "/api/embed"
-            },
-            # Then try /api/embeddings endpoint (some versions)
-            {
-                "url": f"{self.base_url}/api/embeddings",
-                "payload": {
-                    "model": model_name,
-                    "prompt": input_text
-                },
-                "name": "/api/embeddings"
-            },
-            # Finally try /api/generate with embedding_only option
-            {
-                "url": f"{self.base_url}/api/generate",
-                "payload": {
-                    "model": model_name,
-                    "prompt": input_text,
-                    "options": {
-                        "embedding_only": True
-                    }
-                },
-                "name": "/api/generate with embedding_only"
-            }
-        ]
+        print(f"Generating embedding using Ollama embed API with model: {model_name}")
+        
+        # Format the request payload according to the API docs
+        payload = {
+            "model": model_name,
+            "prompt": input_text
+        }
+        
+        # Call the Ollama embed API
+        response = requests.post(f"{self.base_url}/api/embed", json=payload)
+        
+        # Handle the response
+        if response.status_code != 200:
+            raise ValueError(f"Ollama embed API returned status code {response.status_code}: {response.text}")
             
-        # Try each endpoint
-        for endpoint in endpoints:
-            try:
-                print(f"Trying to generate embedding with endpoint: {endpoint['name']}")
-                response = requests.post(endpoint["url"], json=endpoint["payload"])
-                if response.status_code != 200:
-                    print(f"Endpoint {endpoint['name']} returned status {response.status_code}")
-                    continue
-                    
-                result = response.json()
-                # Different endpoints return embeddings in different formats
-                if "embedding" in result:
-                    embedding = result["embedding"]
-                elif "data" in result and len(result["data"]) > 0 and "embedding" in result["data"][0]:
-                    embedding = result["data"][0]["embedding"]
-                else:
-                    print(f"No embedding found in response from {endpoint['name']}")
-                    continue
-                
-                # Check if we got a valid embedding
-                if embedding and len(embedding) > 10:  # Basic validation
-                    print(f"Successfully generated embedding with endpoint {endpoint['name']}")
-                    return embedding
-                else:
-                    print(f"Endpoint {endpoint['name']} returned invalid embedding")
-            except Exception as e:
-                print(f"Error with endpoint {endpoint['name']}: {e}")
+        result = response.json()
         
-        # All API endpoints failed, generate a random embedding for testing
-        print("All embedding endpoints failed. Generating random embedding for testing.")
-        
-        import random
-        import numpy as np
-        
-        # Generate a random unit vector (normalized)
-        embedding_size = 768  # Standard size for many embedding models
-        random_vector = np.random.randn(embedding_size)
-        normalized = random_vector / np.linalg.norm(random_vector)
-        return normalized.tolist()
+        # According to the API docs, the response contains an "embedding" field
+        # with an array of floats
+        if "embedding" in result:
+            print("Successfully generated embedding from Ollama embed API")
+            return result["embedding"]
+        else:
+            raise ValueError(f"Invalid response from Ollama embed API: {result}")
 
     def extract_metadata(self, text: str, model: Optional[str] = None, max_tokens: Optional[int] = None) -> Dict[str, str]:
         """
