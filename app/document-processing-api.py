@@ -321,10 +321,7 @@ async def process_documents(
     overlap: int = Query(None, description="Override chunk overlap (chars)"),
     enable_chunking: bool = Query(None, description="Override chunking enabled setting")
 ):
-    # Allow API-level overrides of chunking parameters
-    global MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, CHUNK_OVERLAP, ENABLE_CHUNKING
-    
-    # Apply overrides if provided
+    # Apply overrides if provided without modifying globals
     temp_max_chunk_size = chunk_size if chunk_size is not None else MAX_CHUNK_SIZE
     temp_min_chunk_size = min_size if min_size is not None else MIN_CHUNK_SIZE
     temp_chunk_overlap = overlap if overlap is not None else CHUNK_OVERLAP
@@ -360,25 +357,142 @@ async def process_documents(
                         rel_path = os.path.relpath(file_path, DOCS_FOLDER)
                         
                         # Apply chunking with temp settings
-                        original_vals = (MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, CHUNK_OVERLAP, ENABLE_CHUNKING)
                         try:
-                            # Temporarily override globals for this function call
-                            global MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, CHUNK_OVERLAP, ENABLE_CHUNKING
-                            MAX_CHUNK_SIZE = temp_max_chunk_size
-                            MIN_CHUNK_SIZE = temp_min_chunk_size
-                            CHUNK_OVERLAP = temp_chunk_overlap
-                            ENABLE_CHUNKING = temp_enable_chunking
+                            # Pass the temporary settings directly to the function arguments
+                            # instead of modifying the globals
+                            def chunk_with_settings(doc_text, doc_path, max_size, min_size, overlap, enable):
+                                """Chunk document with explicit settings instead of globals"""
+                                # Skip empty documents
+                                if not doc_text.strip():
+                                    return []
+                                
+                                # If chunking is disabled or document is small, return as single chunk
+                                if not enable or len(doc_text) < max_size:
+                                    return [(doc_text, doc_path)]
+                                
+                                chunks = []
+                                
+                                # Split document into paragraphs based on double newlines
+                                paragraphs = re.split(r'\n\s*\n', doc_text)
+                                
+                                current_chunk = []
+                                current_length = 0
+                                chunk_index = 0
+                                
+                                # Process each paragraph
+                                for para in paragraphs:
+                                    para = para.strip()
+                                    if not para:
+                                        continue
+                                        
+                                    para_length = len(para)
+                                    
+                                    # If this paragraph alone exceeds max chunk size, split it further
+                                    if para_length > max_size:
+                                        # If we have a current chunk, finalize it first
+                                        if current_chunk:
+                                            chunk_text = "\n\n".join(current_chunk)
+                                            chunk_id = f"{doc_path}#chunk-{chunk_index}"
+                                            chunks.append((chunk_text, chunk_id))
+                                            chunk_index += 1
+                                            current_chunk = []
+                                            current_length = 0
+                                        
+                                        # Split long paragraphs by sentences
+                                        sentences = re.split(r'(?<=[.!?])\s+', para)
+                                        sentence_chunk = []
+                                        sentence_length = 0
+                                        
+                                        for sentence in sentences:
+                                            if sentence_length + len(sentence) > max_size and sentence_length > min_size:
+                                                # Finalize this sentence chunk
+                                                chunk_text = " ".join(sentence_chunk)
+                                                chunk_id = f"{doc_path}#chunk-{chunk_index}"
+                                                chunks.append((chunk_text, chunk_id))
+                                                chunk_index += 1
+                                                
+                                                # Start a new chunk with overlap
+                                                retain_sentences = []
+                                                retain_length = 0
+                                                
+                                                # Keep some sentences for context overlap
+                                                for prev_sent in reversed(sentence_chunk):
+                                                    if retain_length + len(prev_sent) <= overlap:
+                                                        retain_sentences.insert(0, prev_sent)
+                                                        retain_length += len(prev_sent) + 1  # +1 for space
+                                                    else:
+                                                        break
+                                                
+                                                sentence_chunk = retain_sentences
+                                                sentence_length = retain_length
+                                            
+                                            sentence_chunk.append(sentence)
+                                            sentence_length += len(sentence) + 1  # +1 for space
+                                        
+                                        # Add the remaining sentences as a chunk
+                                        if sentence_chunk:
+                                            chunk_text = " ".join(sentence_chunk)
+                                            chunk_id = f"{doc_path}#chunk-{chunk_index}"
+                                            chunks.append((chunk_text, chunk_id))
+                                            chunk_index += 1
+                                        
+                                    # If adding this paragraph would exceed the limit, finalize the current chunk
+                                    elif current_length + para_length > max_size and current_length > min_size:
+                                        chunk_text = "\n\n".join(current_chunk)
+                                        chunk_id = f"{doc_path}#chunk-{chunk_index}"
+                                        chunks.append((chunk_text, chunk_id))
+                                        chunk_index += 1
+                                        
+                                        # For overlap, keep some content from the previous chunk
+                                        overlap_paras = []
+                                        overlap_length = 0
+                                        
+                                        # Find paragraphs to retain for overlap
+                                        for prev_para in reversed(current_chunk):
+                                            if overlap_length + len(prev_para) <= overlap:
+                                                overlap_paras.insert(0, prev_para)
+                                                overlap_length += len(prev_para) + 2  # +2 for newlines
+                                            else:
+                                                break
+                                        
+                                        current_chunk = overlap_paras
+                                        current_length = overlap_length
+                                        
+                                        # Add the current paragraph to the new chunk
+                                        current_chunk.append(para)
+                                        current_length += para_length
+                                        
+                                    # Otherwise add the paragraph to the current chunk
+                                    else:
+                                        current_chunk.append(para)
+                                        current_length += para_length + 2  # +2 for the paragraph separator
+                                
+                                # Don't forget the last chunk
+                                if current_chunk:
+                                    chunk_text = "\n\n".join(current_chunk)
+                                    chunk_id = f"{doc_path}#chunk-{chunk_index}"
+                                    chunks.append((chunk_text, chunk_id))
+                                
+                                print(f"Split document '{doc_path}' into {len(chunks)} chunks")
+                                return chunks
                             
-                            # Chunk the document
-                            chunks = chunk_document(content, rel_path)
+                            # Use our local function with passed parameters
+                            chunks = chunk_with_settings(
+                                content, 
+                                rel_path,
+                                temp_max_chunk_size,
+                                temp_min_chunk_size,
+                                temp_chunk_overlap,
+                                temp_enable_chunking
+                            )
                             
                             # Add chunks to our collection
                             for chunk_text, chunk_id in chunks:
                                 all_chunks.append(chunk_text)
                                 all_chunk_ids.append(chunk_id)
                         finally:
-                            # Restore original values
-                            MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, CHUNK_OVERLAP, ENABLE_CHUNKING = original_vals
+                            # Nothing to restore as we're not modifying globals anymore
+                            pass
                 except Exception as e:
                     print(f"Error reading file {file_path}: {e}")
     
