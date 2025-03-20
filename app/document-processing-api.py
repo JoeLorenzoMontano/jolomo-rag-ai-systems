@@ -19,8 +19,23 @@ app.add_middleware(
 )
 
 # Initialize ChromaDB client
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
-db_collection = chroma_client.get_or_create_collection(name="documents")
+try:
+    # Try to connect to ChromaDB as HttpClient
+    chroma_client = chromadb.HttpClient(host="chromadb", port=8000)
+    # Test connection
+    chroma_client.heartbeat()
+    print("Connected to ChromaDB via HTTP")
+except Exception as e:
+    print(f"HTTP connection failed: {e}")
+    # Fallback to PersistentClient
+    chroma_client = chromadb.PersistentClient(path="./chroma_db")
+    print("Using local PersistentClient")
+
+# Create or get collection
+db_collection = chroma_client.get_or_create_collection(
+    name="documents",
+    embedding_function=None  # We provide our own embeddings
+)
 
 # Initialize Ollama Client
 ollama_client = OllamaClient()
@@ -44,10 +59,24 @@ async def process_documents():
     if not documents:
         raise HTTPException(status_code=400, detail="No documents to process.")
     
-    embeddings = [ollama_client.generate_embedding(doc) for doc in documents]
-    
-    for i, doc in enumerate(documents):
-        db_collection.add(ids=[file_names[i]], embeddings=[embeddings[i]], metadatas=[{"filename": file_names[i]}])
+    # Process documents in batches to avoid memory issues
+    batch_size = 5
+    for i in range(0, len(documents), batch_size):
+        batch_docs = documents[i:i+batch_size]
+        batch_names = file_names[i:i+batch_size]
+        
+        # Generate embeddings for the current batch
+        batch_embeddings = [ollama_client.generate_embedding(doc) for doc in batch_docs]
+        
+        # Add to ChromaDB
+        ids = batch_names
+        metadatas = [{"filename": name} for name in batch_names]
+        db_collection.add(
+            ids=ids,
+            embeddings=batch_embeddings,
+            metadatas=metadatas,
+            documents=batch_docs
+        )
     
     return {"message": "Documents processed and stored in ChromaDB", "total": len(documents)}
 
@@ -56,13 +85,20 @@ async def query_documents(query: str):
     query_embedding = ollama_client.generate_embedding(query)
     results = db_collection.query(query_embeddings=[query_embedding], n_results=3)
     
-    if not results["documents"]:
+    if not results["documents"] or not results["documents"][0]:
         raise HTTPException(status_code=404, detail="No relevant documents found.")
     
-    best_match = results["documents"][0]
+    best_match = results["documents"][0][0] if isinstance(results["documents"][0], list) else results["documents"][0]
     response = ollama_client.generate_response(context=best_match, query=query)
     
-    return {"query": query, "response": response, "sources": results}
+    # Clean up the response for better frontend rendering
+    cleaned_results = {
+        "documents": results["documents"],
+        "ids": results["ids"],
+        "metadatas": results["metadatas"]
+    }
+    
+    return {"query": query, "response": response, "sources": cleaned_results}
 
 # Custom OpenAPI documentation
 @app.get("/openapi.json", include_in_schema=False)

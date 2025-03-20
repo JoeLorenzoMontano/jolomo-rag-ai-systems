@@ -7,29 +7,34 @@ services:
       - "8000:8000"
     depends_on:
       - chromadb
+      - ollama
     volumes:
-      - ./data:/app/data
-      - ./utils:/app/utils
+      - ./rag-documents:/app/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPEN_WEBUI_API_KEY=sk-0e21bac8a018452d92fad8127578d214
 
   chromadb:
     image: chromadb/chroma:latest
     container_name: chromadb
     restart: always
     volumes:
-      - chromadb_data:/chroma
+      - chromadb_data:/chroma/chroma
     ports:
-      - "8001:8001"
+      - "8001:8000"
     environment:
-      - CHROMA_DB_DIR=/chroma
+      - CHROMA_DB_IMPL=duckdb+parquet
+      - CHROMA_DB_DIR=/chroma/chroma
+      - PERSIST_DIRECTORY=/chroma/chroma
 
   ollama:
     image: ollama/ollama:latest
     container_name: ollama-server
     restart: always
     ports:
-      - "3001:3001"
+      - "3001:11434"
     volumes:
-      - ollama_data:/ollama
+      - ollama_data:/root/.ollama
     environment:
       - MODEL=deepseek-r1:8b
 

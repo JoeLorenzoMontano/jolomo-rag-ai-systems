@@ -1,19 +1,20 @@
 import requests
 import json
 import re
+import os
 from typing import List, Dict, Optional
 
-OPEN_WEBUI_API_KEY = "sk-0e21bac8a018452d92fad8127578d214"#os.getenv("OPEN_WEBUI_API_KEY")
+OPEN_WEBUI_API_KEY = os.getenv("OPEN_WEBUI_API_KEY", "sk-0e21bac8a018452d92fad8127578d214")
 
 class OllamaClient:
-    def __init__(self, base_url: str = "http://localhost:3001", model: str = "deepseek-r1:8b"):
+    def __init__(self, base_url: str = None, model: str = None):
         """
         Initializes the Ollama client.
         :param base_url: Ollama server URL (default: local Ollama instance)
         :param model: Default model to use for generating responses
         """
-        self.base_url = base_url
-        self.model = model
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.model = model or os.getenv("MODEL", "deepseek-r1:8b")
 
     def generate_response(self, context: str, query: str, model: Optional[str] = None, max_tokens: Optional[int] = None) -> str:
         """
@@ -48,10 +49,10 @@ class OllamaClient:
             "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}"
         }
 
-        response = requests.post(f"{self.base_url}/api/chat/completions", json=payload, headers=headers)
+        response = requests.post(f"{self.base_url}/api/chat", json=payload, headers=headers)
         response.raise_for_status()
         result = response.json()
-        return self._remove_think_regions(result.get("choices", [{}])[0].get("message", {}).get("content", "No response generated."))
+        return self._remove_think_regions(result.get("message", {}).get("content", "No response generated."))
 
     def summarize_text(self, text: str, context: str, model: Optional[str] = "mistral:7b", max_tokens: Optional[int] = None) -> str:
         """
@@ -83,24 +84,24 @@ class OllamaClient:
             "max_tokens": max_tokens,
         }
 
-        response = requests.post(f"{self.base_url}/api/chat/completions", json=payload)
+        response = requests.post(f"{self.base_url}/api/chat", json=payload)
         response.raise_for_status()
         result = response.json()
-        return self._remove_think_regions(result.get("choices", [{}])[0].get("message", {}).get("content", "No summary generated."))
+        return self._remove_think_regions(result.get("message", {}).get("content", "No summary generated."))
 
     def generate_embedding(self, input_text: str) -> List[float]:
         """
         Generates an embedding for the given input text.
         """
         payload = {
-            "model": "all-minilm:l6-v2",
-            "input": [input_text],
+            "model": "all-minilm",
+            "prompt": input_text,
         }
 
         response = requests.post(f"{self.base_url}/api/embeddings", json=payload)
         response.raise_for_status()
         result = response.json()
-        return result.get("data", [{}])[0].get("embedding", [])
+        return result.get("embedding", [])
 
     def extract_metadata(self, text: str, model: str = "mistral:7b", max_tokens: Optional[int] = None) -> Dict[str, str]:
         """
@@ -121,10 +122,14 @@ class OllamaClient:
             "max_tokens": max_tokens,
         }
 
-        response = requests.post(f"{self.base_url}/api/chat/completions", json=payload)
+        response = requests.post(f"{self.base_url}/api/chat", json=payload)
         response.raise_for_status()
         result = response.json()
-        return self._normalize_metadata(json.loads(result.get("choices", [{}])[0].get("message", {}).get("content", "{}")))
+        response_content = result.get("message", {}).get("content", "{}")
+        try:
+            return self._normalize_metadata(json.loads(response_content))
+        except json.JSONDecodeError:
+            return {"error": "Failed to parse JSON response", "content": response_content}
 
     def _normalize_metadata(self, metadata: Dict[str, str]) -> Dict[str, str]:
         """

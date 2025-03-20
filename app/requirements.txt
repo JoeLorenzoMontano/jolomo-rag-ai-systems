@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 chromadb
+requests
+python-dotenv
