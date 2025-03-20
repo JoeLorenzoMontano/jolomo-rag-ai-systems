@@ -49,10 +49,16 @@ for attempt in range(max_retries):
             print("All connection attempts failed. Raising exception.")
             raise RuntimeError(f"Could not connect to ChromaDB at http://{CHROMA_HOST}:{CHROMA_PORT} after {max_retries} attempts")
 
-# Create or get collection
-db_collection = chroma_client.get_or_create_collection(
-    name="documents"
-)
+# Create or get collection with proper settings
+try:
+    db_collection = chroma_client.get_or_create_collection(
+        name="documents",
+        metadata={"description": "Main document collection for RAG processing"}
+    )
+    print(f"Collection 'documents' ready with {db_collection.count()} documents")
+except Exception as e:
+    print(f"Error creating collection: {e}")
+    raise RuntimeError(f"Failed to create ChromaDB collection: {e}")
 
 # Initialize Ollama Client
 ollama_client = OllamaClient()
@@ -124,55 +130,129 @@ async def process_documents():
     
     # Process documents in batches to avoid memory issues
     batch_size = 5
+    successful = 0
+    failed = 0
+    failed_files = []
+    
     for i in range(0, len(documents), batch_size):
         batch_docs = documents[i:i+batch_size]
         batch_names = file_names[i:i+batch_size]
         
-        # Generate embeddings for the current batch
-        batch_embeddings = [ollama_client.generate_embedding(doc) for doc in batch_docs]
-        
-        # Add to ChromaDB
-        ids = batch_names
-        metadatas = [{"filename": name} for name in batch_names]
-        db_collection.add(
-            ids=ids,
-            embeddings=batch_embeddings,
-            metadatas=metadatas,
-            documents=batch_docs
-        )
+        try:
+            # Generate embeddings for the current batch - use a safer approach to handle errors
+            batch_embeddings = []
+            valid_docs = []
+            valid_names = []
+            
+            for j, doc in enumerate(batch_docs):
+                try:
+                    embedding = ollama_client.generate_embedding(doc)
+                    batch_embeddings.append(embedding)
+                    valid_docs.append(doc)
+                    valid_names.append(batch_names[j])
+                except Exception as e:
+                    print(f"Error generating embedding for {batch_names[j]}: {e}")
+                    failed += 1
+                    failed_files.append(batch_names[j])
+            
+            # Update our batch to only include documents with valid embeddings
+            batch_docs = valid_docs
+            batch_names = valid_names
+            
+            # Skip to next batch if all embeddings failed
+            if not batch_embeddings:
+                continue
+                
+            # Add to ChromaDB
+            ids = batch_names
+            metadatas = [{"filename": name} for name in batch_names]
+            
+            db_collection.add(
+                ids=ids,
+                embeddings=batch_embeddings,
+                metadatas=metadatas,
+                documents=batch_docs
+            )
+            
+            successful += len(batch_embeddings)
+            print(f"Added batch: {len(batch_embeddings)} documents")
+            
+        except Exception as e:
+            print(f"Error processing batch: {e}")
+            failed += len(batch_docs)
+            failed_files.extend(batch_names)
     
-    return {"message": "Documents processed and stored in ChromaDB", "total": len(documents)}
+    # Return detailed status
+    if failed > 0:
+        return {
+            "message": "Documents processed with some errors",
+            "total": len(documents),
+            "successful": successful,
+            "failed": failed,
+            "failed_files": failed_files
+        }
+    else:
+        return {
+            "message": "All documents processed successfully",
+            "total": len(documents),
+            "successful": successful
+        }
 
 @app.get("/query", summary="Retrieve relevant documents", description="Query ChromaDB for the most relevant document based on input text.")
 async def query_documents(query: str):
     try:
+        # Check if ChromaDB has any documents at all
+        doc_count = db_collection.count()
+        if doc_count == 0:
+            return {
+                "query": query,
+                "response": "No documents have been processed yet. Please use the /process endpoint first.",
+                "sources": {"documents": [], "ids": [], "metadatas": []},
+                "status": "error",
+                "error": "Empty collection"
+            }
+            
+        # Generate embedding for the query using Ollama
         query_embedding = ollama_client.generate_embedding(query)
-        results = db_collection.query(query_embeddings=[query_embedding], n_results=3)
         
-        # Handle various result formats from different ChromaDB versions
-        if not results["documents"]:
-            raise HTTPException(status_code=404, detail="No relevant documents found.")
+        # Get the most relevant documents from ChromaDB
+        results = db_collection.query(
+            query_embeddings=[query_embedding], 
+            n_results=3,
+            include=["documents", "metadatas", "distances"]
+        )
         
-        # Safely get the best matching document
-        first_result = results["documents"][0]
+        # Handle the case where no documents are found
+        if not results["documents"] or len(results["documents"]) == 0:
+            return {
+                "query": query,
+                "response": "No relevant documents found in the database.",
+                "sources": {"documents": [], "ids": [], "metadatas": []},
+                "status": "not_found"
+            }
+        
+        # Safely get the best matching document(s)
+        documents = results["documents"][0]
         best_match = ""
         
-        if isinstance(first_result, list) and first_result:
-            best_match = first_result[0]
-        elif isinstance(first_result, str):
-            best_match = first_result
+        # Handle different response formats from ChromaDB
+        if isinstance(documents, list) and documents:
+            best_match = documents[0]
+        elif isinstance(documents, str):
+            best_match = documents
         else:
-            print(f"Unexpected result format: {type(first_result)}")
-            best_match = str(first_result)
+            print(f"Unexpected result format: {type(documents)}")
+            best_match = str(documents)
             
-        # Generate a response based on the best match
+        # Generate a response based on the best match using Ollama
         response = ollama_client.generate_response(context=best_match, query=query)
         
         # Clean up the response for better frontend rendering
         cleaned_results = {
             "documents": results["documents"],
             "ids": results["ids"],
-            "metadatas": results.get("metadatas", [{}] * len(results["ids"]))
+            "metadatas": results.get("metadatas", [{}] * len(results["ids"])),
+            "distances": results.get("distances", [0] * len(results["ids"]))
         }
         
         return {
@@ -183,13 +263,27 @@ async def query_documents(query: str):
         }
     except Exception as e:
         print(f"Error in query_documents: {e}")
-        return {
+        
+        # Provide a more helpful error response
+        error_response = {
             "query": query,
-            "response": f"An error occurred while processing your query: {str(e)}",
-            "sources": {"documents": [], "ids": [], "metadatas": []},
             "status": "error",
             "error": str(e)
         }
+        
+        # Add more context based on the type of error
+        if "embed" in str(e).lower():
+            error_response["response"] = "Error generating embeddings. The Ollama model may not support the embedding API."
+            error_response["suggestion"] = "Check if the model supports embeddings or try a different model."
+        elif "chroma" in str(e).lower():
+            error_response["response"] = "Error connecting to the vector database."
+            error_response["suggestion"] = "Verify ChromaDB is running and accessible."
+        else:
+            error_response["response"] = f"An error occurred while processing your query: {str(e)}"
+            
+        error_response["sources"] = {"documents": [], "ids": [], "metadatas": []}
+        
+        return error_response
 
 # Custom OpenAPI documentation
 @app.get("/openapi.json", include_in_schema=False)
