@@ -12,7 +12,8 @@ services:
       - ./rag-documents:/app/data
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OPEN_WEBUI_API_KEY=sk-0e21bac8a018452d92fad8127578d214
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
 
   chromadb:
     image: chromadb/chroma:latest
@@ -32,11 +33,12 @@ services:
     container_name: ollama-server
     restart: always
     ports:
-      - "3001:11434"
+      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     environment:
-      - MODEL=deepseek-r1:8b
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=/root/.ollama/models
 
 volumes:
   chromadb_data:

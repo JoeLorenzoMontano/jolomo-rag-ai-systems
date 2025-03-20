@@ -19,17 +19,37 @@ app.add_middleware(
 )
 
 # Initialize ChromaDB client
-try:
-    # Try to connect to ChromaDB as HttpClient
-    chroma_client = chromadb.HttpClient(host="chromadb", port=8000)
-    # Test connection
-    chroma_client.heartbeat()
-    print("Connected to ChromaDB via HTTP")
-except Exception as e:
-    print(f"HTTP connection failed: {e}")
-    # Fallback to PersistentClient
-    chroma_client = chromadb.PersistentClient(path="./chroma_db")
-    print("Using local PersistentClient")
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
+
+# Try multiple connection methods to ChromaDB
+for attempt in range(3):
+    try:
+        # First try HTTP client connection
+        print(f"Attempt {attempt+1}: Connecting to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}")
+        chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+        chroma_client.heartbeat()
+        print("Connected to ChromaDB via HTTP")
+        break
+    except Exception as e:
+        print(f"HTTP connection failed: {e}")
+        if attempt == 0:
+            # Try standard port
+            CHROMA_PORT = 8000
+        elif attempt == 1:
+            # Try local persistent client
+            try:
+                chroma_db_path = "./chroma_db"
+                print(f"Attempting local PersistentClient at {chroma_db_path}")
+                chroma_client = chromadb.PersistentClient(path=chroma_db_path)
+                print("Using local PersistentClient")
+                break
+            except Exception as e2:
+                print(f"PersistentClient failed: {e2}")
+        # If all attempts failed, use in-memory client
+        if attempt == 2:
+            print("All connection attempts failed. Using in-memory client.")
+            chroma_client = chromadb.Client()
 
 # Create or get collection
 db_collection = chroma_client.get_or_create_collection(
@@ -49,12 +69,26 @@ async def process_documents():
     documents = []
     file_names = []
     
-    for filename in os.listdir(DOCS_FOLDER):
-        file_path = os.path.join(DOCS_FOLDER, filename)
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-            documents.append(content)
-            file_names.append(filename)
+    # Function to process files recursively
+    def process_directory(directory):
+        for filename in os.listdir(directory):
+            file_path = os.path.join(directory, filename)
+            if os.path.isdir(file_path):
+                # Recursively process subdirectories
+                process_directory(file_path)
+            elif os.path.isfile(file_path) and file_path.endswith('.md'):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        # Use relative path as identifier
+                        rel_path = os.path.relpath(file_path, DOCS_FOLDER)
+                        documents.append(content)
+                        file_names.append(rel_path)
+                except Exception as e:
+                    print(f"Error reading file {file_path}: {e}")
+    
+    # Process all files recursively
+    process_directory(DOCS_FOLDER)
     
     if not documents:
         raise HTTPException(status_code=400, detail="No documents to process.")
