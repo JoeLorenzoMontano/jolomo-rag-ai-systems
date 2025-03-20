@@ -48,10 +48,14 @@ curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${EMBEDDING_MODEL}
 echo "Testing /api/embed endpoint with ${EMBEDDING_MODEL}:"
 EMBED_TEST=$(curl -s -X POST "${OLLAMA_BASE_URL}/api/embed" -d "{\"model\":\"${EMBEDDING_MODEL}\",\"input\":\"test\"}")
 if echo "$EMBED_TEST" | grep -q "embedding"; then
-  echo "Embedding API working correctly!"
+  echo "Embedding API working correctly! (using 'embedding' field)"
+elif echo "$EMBED_TEST" | grep -q "embeddings"; then
+  echo "Embedding API working correctly! (using 'embeddings' field)"
 else
   echo "WARNING: Embedding API test failed. Response:"
   echo "$EMBED_TEST"
+  # For better debugging, check the format of the response
+  echo "Response fields: $(echo "$EMBED_TEST" | python3 -c "import sys, json; print(list(json.load(sys.stdin).keys()))")"
 fi
 
 # Test generate endpoint

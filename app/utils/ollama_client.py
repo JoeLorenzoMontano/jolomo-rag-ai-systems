@@ -159,13 +159,19 @@ class OllamaClient:
             
         result = response.json()
         
-        # According to the API docs, the response contains an "embedding" field
-        # with an array of floats
+        # Handle different response formats from Ollama
+        # Some models return an "embedding" field with the vector directly
         if "embedding" in result:
-            print("Successfully generated embedding from Ollama embed API")
+            print("Successfully generated embedding from Ollama embed API (using 'embedding' field)")
             return result["embedding"]
+        # Other models return an "embeddings" field with an array containing one or more vectors
+        elif "embeddings" in result and len(result["embeddings"]) > 0:
+            print("Successfully generated embedding from Ollama embed API (using 'embeddings' field)")
+            return result["embeddings"][0]
         else:
-            raise ValueError(f"Invalid response from Ollama embed API: {result}")
+            # For debugging, log the actual response format
+            print(f"Unexpected response format from Ollama embed API: {result}")
+            raise ValueError(f"Invalid response from Ollama embed API, missing both 'embedding' and 'embeddings' fields")
 
     def extract_metadata(self, text: str, model: Optional[str] = None, max_tokens: Optional[int] = None) -> Dict[str, str]:
         """

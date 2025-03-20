@@ -89,6 +89,8 @@ docker-compose up -d
 
 - **POST /process**: Processes all documents in the `rag-documents` directory and stores their embeddings in ChromaDB
 - **GET /query?query=YOUR_QUERY**: Returns a response based on the most relevant documents matching your query
+- **GET /health**: Returns detailed health status of all services and components
+- **POST /test-embedding?text=YOUR_TEXT**: Tests the embedding functionality with custom text (useful for debugging)
 
 ### Example Usage
 
@@ -115,3 +117,42 @@ curl -X GET "http://localhost:8000/query?query=What%20are%20the%20tenant%20confi
 - If you encounter issues with the Ollama service, check the logs with `docker logs ollama-server`
 - If you encounter issues with ChromaDB, check the logs with `docker logs chromadb`
 - If you need to reset the system, you can run `docker-compose down -v` to remove all volumes and containers, then `docker-compose up -d` to start fresh
+
+### Common Issues
+
+#### Embedding API Response Format
+
+The Ollama embedding API can return responses in different formats depending on the model:
+- Some models return an `embedding` field with the vector directly
+- Others (like all-minilm:l6-v2) return an `embeddings` field with an array of vectors
+
+The application now handles both formats automatically. You can test embedding generation with:
+
+```bash
+# Test with the /test-embedding endpoint
+curl -X POST "http://localhost:8000/test-embedding?text=This%20is%20a%20test"
+
+# Or check the health endpoint for embedded status
+curl http://localhost:8000/health
+```
+
+If you're experiencing embedding issues, you can also check Ollama's embed API directly:
+
+```bash
+# Direct test of the Ollama embedding API
+curl -X POST http://localhost:11434/api/embed -d '{"model":"all-minilm:l6-v2","input":"test"}'
+```
+
+#### ChromaDB Connection Issues
+
+If you encounter connection issues with ChromaDB, try:
+1. Checking the ChromaDB logs: `docker logs chromadb`
+2. Ensuring the correct ports are mapped in docker-compose.yml
+3. Verifying there are no version conflicts with NumPy (should be <2.0.0)
+
+#### GPU Support Compatibility
+
+If GPU acceleration isn't working:
+1. Verify your system has NVIDIA drivers installed
+2. Check that the Docker NVIDIA runtime is installed
+3. Ensure your GPU is compatible with the layers setting (try reducing `--gpu-layers`)

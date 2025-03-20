@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 import chromadb
 import os
 import requests
+import time as import_time
 from utils.ollama_client import OllamaClient
 
 # Initialize FastAPI app
@@ -96,13 +97,29 @@ async def health_check():
     health_status = {
         "api": "healthy",
         "chroma": "unknown",
-        "ollama": "unknown"
+        "ollama": "unknown",
+        "models": {
+            "response_model": "unknown",
+            "embedding_model": "unknown"
+        },
+        "collection": {
+            "status": "unknown",
+            "document_count": 0
+        }
     }
     
     # Check ChromaDB
     try:
         chroma_client.heartbeat()
         health_status["chroma"] = "healthy"
+        
+        # Check collection status
+        try:
+            doc_count = db_collection.count()
+            health_status["collection"]["status"] = "healthy"
+            health_status["collection"]["document_count"] = doc_count
+        except Exception as e:
+            health_status["collection"]["status"] = f"error: {str(e)}"
     except Exception as e:
         health_status["chroma"] = f"unhealthy: {str(e)}"
     
@@ -111,10 +128,44 @@ async def health_check():
         response = requests.get(f"{ollama_client.base_url}/api/tags", timeout=2)
         if response.status_code == 200:
             health_status["ollama"] = "healthy"
+            
+            # Check available models
+            model_data = response.json()
+            available_models = []
+            
+            # Handle different response formats
+            if "models" in model_data:
+                available_models = [m["name"] for m in model_data["models"]]
+            elif isinstance(model_data, list):
+                available_models = [m["name"] for m in model_data]
+                
+            # Check if our models are available
+            response_model = ollama_client.model
+            embedding_model = ollama_client.embedding_model
+            
+            if response_model in available_models:
+                health_status["models"]["response_model"] = f"available ({response_model})"
+            else:
+                health_status["models"]["response_model"] = f"not found (looking for {response_model})"
+                
+            if embedding_model in available_models:
+                health_status["models"]["embedding_model"] = f"available ({embedding_model})"
+            else:
+                health_status["models"]["embedding_model"] = f"not found (looking for {embedding_model})"
         else:
             health_status["ollama"] = f"unhealthy: status code {response.status_code}"
     except Exception as e:
         health_status["ollama"] = f"unhealthy: {str(e)}"
+    
+    # Test embedding functionality
+    if health_status["ollama"] == "healthy":
+        try:
+            # Quick test of embedding generation with a simple string
+            embedding = ollama_client.generate_embedding("test health check")
+            if embedding and len(embedding) > 0:
+                health_status["models"]["embedding_model"] += f" - working (dimension: {len(embedding)})"
+        except Exception as e:
+            health_status["models"]["embedding_model"] += f" - error: {str(e)}"
     
     return health_status
 
@@ -169,14 +220,28 @@ async def process_documents():
             
             for j, doc in enumerate(batch_docs):
                 try:
+                    # Skip empty documents
+                    if not doc.strip():
+                        print(f"Skipping empty document: {batch_names[j]}")
+                        failed += 1
+                        failed_files.append(f"{batch_names[j]} (empty)")
+                        continue
+                        
+                    # Attempt to generate embedding
+                    print(f"Processing document {batch_names[j]} ({len(doc)} chars)")
                     embedding = ollama_client.generate_embedding(doc)
+                    
+                    # Verify embedding is valid (not None and has values)
+                    if embedding is None or len(embedding) == 0:
+                        raise ValueError("Empty embedding returned")
+                        
                     batch_embeddings.append(embedding)
                     valid_docs.append(doc)
                     valid_names.append(batch_names[j])
                 except Exception as e:
                     print(f"Error generating embedding for {batch_names[j]}: {e}")
                     failed += 1
-                    failed_files.append(batch_names[j])
+                    failed_files.append(f"{batch_names[j]} ({str(e)})")
             
             # Update our batch to only include documents with valid embeddings
             batch_docs = valid_docs
@@ -238,12 +303,31 @@ async def query_documents(query: str):
         # Generate embedding for the query using Ollama
         query_embedding = ollama_client.generate_embedding(query)
         
-        # Get the most relevant documents from ChromaDB
-        results = db_collection.query(
-            query_embeddings=[query_embedding], 
-            n_results=3,
-            include=["documents", "metadatas", "distances"]
-        )
+        # Log the embedding dimension for debugging
+        print(f"Generated query embedding with dimension: {len(query_embedding)}")
+        
+        try:
+            # Get the most relevant documents from ChromaDB
+            results = db_collection.query(
+                query_embeddings=[query_embedding], 
+                n_results=3,
+                include=["documents", "metadatas", "distances"]
+            )
+        except Exception as e:
+            # Handle potential embedding dimension mismatch
+            error_msg = str(e)
+            if "dimension" in error_msg.lower():
+                print(f"Embedding dimension error: {error_msg}")
+                return {
+                    "query": query,
+                    "response": "Error: Embedding dimension mismatch. Please reprocess documents with the current embedding model.",
+                    "sources": {"documents": [], "ids": [], "metadatas": []},
+                    "status": "error",
+                    "error": f"Embedding dimension mismatch. Documents in DB have different dimensions than current model output. {error_msg}"
+                }
+            else:
+                # Re-raise other exceptions
+                raise
         
         # Handle the case where no documents are found
         if not results["documents"] or len(results["documents"]) == 0:
@@ -309,6 +393,35 @@ async def query_documents(query: str):
         return error_response
 
 # Custom OpenAPI documentation
+@app.post("/test-embedding", summary="Test embedding generation", description="Tests the embedding generation with provided text.")
+async def test_embedding(text: str = "This is a test of the embedding functionality"):
+    """
+    Endpoint to test embedding generation with custom text.
+    Useful for diagnosing embedding issues.
+    """
+    try:
+        # Generate embedding
+        start_time = import_time()
+        embedding = ollama_client.generate_embedding(text)
+        end_time = import_time()
+        
+        # Return detailed information about the embedding
+        return {
+            "status": "success",
+            "model": ollama_client.embedding_model,
+            "text_length": len(text),
+            "embedding_length": len(embedding),
+            "embedding_sample": embedding[:5],  # Just show the first few elements
+            "processing_time_ms": round((end_time - start_time) * 1000, 2),
+            "response_format": "embeddings array" if isinstance(embedding, list) else type(embedding).__name__
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "model": ollama_client.embedding_model,
+            "error": str(e)
+        }
+
 @app.get("/openapi.json", include_in_schema=False)
 def custom_openapi():
     return get_openapi(
