@@ -1,0 +1,38 @@
+services:
+  fastapi-app:
+    build: ./app
+    container_name: document-processing-service
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - chromadb
+    volumes:
+      - ./data:/app/data
+      - ./utils:/app/utils
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    restart: always
+    volumes:
+      - chromadb_data:/chroma
+    ports:
+      - "8001:8001"
+    environment:
+      - CHROMA_DB_DIR=/chroma
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    restart: always
+    ports:
+      - "3001:3001"
+    volumes:
+      - ollama_data:/ollama
+    environment:
+      - MODEL=deepseek-r1:8b
+
+volumes:
+  chromadb_data:
+  ollama_data:
