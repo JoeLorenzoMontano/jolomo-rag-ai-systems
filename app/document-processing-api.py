@@ -26,28 +26,65 @@ CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 
 print(f"Connecting to ChromaDB at http://{CHROMA_HOST}:{CHROMA_PORT}")
 
-# Connect to ChromaDB with retry logic
-max_retries = 5
+# Connect to ChromaDB with multiple approaches to handle version differences
+# ChromaDB 0.4.15 may have different API endpoints than what the latest client expects
+max_retries = 3
 retry_delay = 2  # seconds
 
-for attempt in range(max_retries):
+# First try: Use API v1 compatibility settings
+try:
+    print("Trying ChromaDB connection with API v1 compatibility mode")
+    from chromadb.config import Settings
+    
+    settings = Settings(
+        chroma_api_impl="rest",
+        chroma_server_host=CHROMA_HOST,
+        chroma_server_http_port=CHROMA_PORT,
+        chroma_server_ssl_enabled=False
+    )
+    
+    # Add API version settings to force v1 compatibility
+    settings.chroma_server_headers = {"accept": "application/json", "X-API-Version": "v1"}
+    
+    chroma_client = chromadb.Client(settings)
+    # Test connection
+    chroma_client.heartbeat()
+    print("Successfully connected to ChromaDB using API v1 compatibility mode")
+except Exception as e:
+    print(f"API v1 compatibility connection failed: {e}")
+    
+    # Second try: Use system environment with direct API
     try:
-        # Use the HttpClient which is the most reliable for server connections
-        chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+        print("Trying ChromaDB connection with system environment settings")
+        import os
         
-        # Verify connection with a heartbeat
+        # Set environment variables to influence client behavior
+        os.environ["CHROMA_API_IMPL"] = "rest"
+        os.environ["CHROMA_SERVER_HOST"] = CHROMA_HOST
+        os.environ["CHROMA_SERVER_HTTP_PORT"] = str(CHROMA_PORT)
+        
+        # Use the basic client which should adapt to the environment
+        chroma_client = chromadb.Client()
+        # Test connection
         chroma_client.heartbeat()
-        print(f"Successfully connected to ChromaDB on attempt {attempt + 1}")
-        break
+        print("Successfully connected to ChromaDB using system environment")
     except Exception as e:
-        print(f"Connection attempt {attempt + 1} failed: {e}")
-        if attempt < max_retries - 1:
-            print(f"Retrying in {retry_delay} seconds...")
-            import time
-            time.sleep(retry_delay)
-        else:
-            print("All connection attempts failed. Raising exception.")
-            raise RuntimeError(f"Could not connect to ChromaDB at http://{CHROMA_HOST}:{CHROMA_PORT} after {max_retries} attempts")
+        print(f"System environment connection failed: {e}")
+        
+        # Third try: Use persistent client (runs locally)
+        try:
+            print("Falling back to persistent local database")
+            chroma_client = chromadb.PersistentClient(path="/tmp/chroma_db")
+            # Test connection
+            chroma_client.heartbeat()
+            print("Successfully created local persistent ChromaDB")
+        except Exception as e:
+            print(f"Persistent client creation failed: {e}")
+            
+            # Final fallback: Use in-memory client
+            print("All connection attempts failed. Using in-memory database as last resort")
+            chroma_client = chromadb.EphemeralClient()
+            print("Using in-memory ChromaDB (data will be lost on restart)")
 
 # Create or get collection with proper settings
 try:

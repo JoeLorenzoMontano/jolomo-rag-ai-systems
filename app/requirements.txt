@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-chromadb
+chromadb==0.4.15
 requests
 python-dotenv
 numpy
