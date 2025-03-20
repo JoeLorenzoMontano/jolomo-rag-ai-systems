@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire application code into the container
 COPY . .
 
-# Make the startup script executable
-RUN chmod +x /app/startup.sh
+# Make the startup script executable and fix line endings
+RUN sed -i 's/\r$//' /app/startup.sh && chmod +x /app/startup.sh
 
 # Expose the FastAPI default port
 EXPOSE 8000
