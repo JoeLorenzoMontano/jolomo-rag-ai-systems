@@ -49,7 +49,9 @@ For all available options, run:
 ./run.sh --help
 ```
 
-### GPU Support
+### Configuration Options
+
+#### GPU Support
 
 To enable GPU support for Ollama, you can either use the run script as shown above, or set the following environment variables before running docker-compose:
 
@@ -65,6 +67,23 @@ docker-compose up -d
 ```
 
 The GPU settings will be ignored if you don't set these variables, allowing the application to run on CPU only.
+
+#### Models
+
+The application uses two different models:
+- `MODEL` (default: llama2) - Used for generating responses to queries
+- `EMBEDDING_MODEL` (default: all-minilm:l6-v2) - Specialized model for generating embeddings
+
+You can override these defaults by setting environment variables:
+
+```bash
+# Use specific models
+export MODEL=mistral               # For generating responses
+export EMBEDDING_MODEL=nomic-embed-text  # For generating embeddings
+
+# Then run docker-compose
+docker-compose up -d
+```
 
 ### API Endpoints
 

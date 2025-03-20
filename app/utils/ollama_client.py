@@ -5,14 +5,16 @@ import os
 from typing import List, Dict, Optional
 
 class OllamaClient:
-    def __init__(self, base_url: str = None, model: str = None):
+    def __init__(self, base_url: str = None, model: str = None, embedding_model: str = None):
         """
         Initializes the Ollama client.
         :param base_url: Ollama server URL (default: local Ollama instance)
         :param model: Default model to use for generating responses
+        :param embedding_model: Model to use for embeddings (defaults to env var or all-minilm:l6-v2)
         """
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model = model or os.getenv("MODEL", "llama2")
+        self.embedding_model = embedding_model or os.getenv("EMBEDDING_MODEL", "all-minilm:l6-v2")
         
         # Make sure base_url doesn't end with a slash
         if self.base_url.endswith('/'):
@@ -137,8 +139,8 @@ class OllamaClient:
         
         Returns a list of floats (the embedding vector).
         """
-        # Use the standard model as it should be loaded
-        model_name = self.model
+        # Use the dedicated embedding model
+        model_name = self.embedding_model
         
         print(f"Generating embedding using Ollama embed API with model: {model_name}")
         

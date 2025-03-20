@@ -7,6 +7,8 @@ GPU_DEVICE=0
 GPU_LAYERS=35
 GPU_COUNT=1
 GPU_MODE="shared"
+MODEL="llama2"
+EMBEDDING_MODEL="all-minilm:l6-v2"
 
 # Usage help
 show_help() {
@@ -19,10 +21,13 @@ show_help() {
     echo "  --gpu-layers N      Offload N layers to GPU (default: 35)"
     echo "  --gpu-count N       Use N GPUs (default: 1)"
     echo "  --gpu-mode MODE     Set GPU mode to 'shared' or 'exclusive' (default: shared)"
+    echo "  --model NAME        Model to use for responses (default: llama2)"
+    echo "  --embedding-model NAME Model to use for embeddings (default: all-minilm:l6-v2)"
     echo "  --help              Show this help message"
     echo ""
-    echo "Example:"
+    echo "Examples:"
     echo "  ./run.sh --gpu --gpu-device 0 --gpu-layers 35"
+    echo "  ./run.sh --model mistral --embedding-model nomic-embed-text"
     exit 0
 }
 
@@ -47,6 +52,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --gpu-mode)
             GPU_MODE="$2"
+            shift 2
+            ;;
+        --model)
+            MODEL="$2"
+            shift 2
+            ;;
+        --embedding-model)
+            EMBEDDING_MODEL="$2"
             shift 2
             ;;
         --help)
@@ -80,6 +93,13 @@ else
     export OLLAMA_GPU_COUNT=0
     export OLLAMA_GPU_MODE=""
 fi
+
+# Export model variables
+export MODEL="$MODEL"
+export EMBEDDING_MODEL="$EMBEDDING_MODEL"
+echo "Using models:"
+echo "   Response model: $MODEL"
+echo "   Embedding model: $EMBEDDING_MODEL"
 
 # Check if docker-compose is running
 echo "Checking if services are already running..."

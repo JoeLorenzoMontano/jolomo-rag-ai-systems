@@ -33,13 +33,20 @@ done
 echo "Checking Ollama models..."
 curl -s "${OLLAMA_BASE_URL}/api/tags"
 
+# Define embedding model
+EMBEDDING_MODEL=${EMBEDDING_MODEL:-"all-minilm:l6-v2"}
+
 # Make sure our main model is available
 echo "Ensuring main model (${MODEL}) is available..."
 curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${MODEL}\"}"
 
-# Test embed endpoint with the model
-echo "Testing /api/embed endpoint with ${MODEL}:"
-EMBED_TEST=$(curl -s -X POST "${OLLAMA_BASE_URL}/api/embed" -d "{\"model\":\"${MODEL}\",\"prompt\":\"test\"}")
+# Make sure our embedding model is available
+echo "Ensuring embedding model (${EMBEDDING_MODEL}) is available..."
+curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${EMBEDDING_MODEL}\"}"
+
+# Test embed endpoint with the embedding model
+echo "Testing /api/embed endpoint with ${EMBEDDING_MODEL}:"
+EMBED_TEST=$(curl -s -X POST "${OLLAMA_BASE_URL}/api/embed" -d "{\"model\":\"${EMBEDDING_MODEL}\",\"input\":\"test\"}")
 if echo "$EMBED_TEST" | grep -q "embedding"; then
   echo "Embedding API working correctly!"
 else

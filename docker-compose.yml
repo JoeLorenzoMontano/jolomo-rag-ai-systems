@@ -15,6 +15,7 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - MODEL=llama2
+      - EMBEDDING_MODEL=all-minilm:l6-v2
     networks:
       - app-network
 
