@@ -14,7 +14,7 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
-      - MODEL=llama2
+      - MODEL=llama2:latest
       - EMBEDDING_MODEL=all-minilm:l6-v2
       # Document chunking settings
       - ENABLE_CHUNKING=true
