@@ -145,7 +145,7 @@ class OllamaClient:
         # Format the request payload according to the API docs
         payload = {
             "model": model_name,
-            "prompt": input_text
+            "input": input_text
         }
         
         # Call the Ollama embed API

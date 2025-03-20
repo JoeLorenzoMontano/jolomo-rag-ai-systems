@@ -44,6 +44,17 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_MODELS=/root/.ollama/models
+      - CUDA_VISIBLE_DEVICES=${OLLAMA_GPU_DEVICES:-""}
+      - OLLAMA_GPU_LAYERS=${OLLAMA_GPU_LAYERS:-0}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${OLLAMA_GPU_COUNT:-0}
+              capabilities: [gpu]
+              options:
+                mode: ${OLLAMA_GPU_MODE:-""}
     networks:
       - app-network
 

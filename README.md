@@ -16,6 +16,8 @@ A RAG (Retrieval-Augmented Generation) application that processes documents, sto
 
 ### Running the Application
 
+#### Option 1: Using docker-compose directly
+
 1. Clone this repository
 2. Navigate to the project directory
 3. Run:
@@ -25,6 +27,44 @@ docker-compose up -d
 ```
 
 4. Wait for all services to start (this may take some time as Ollama downloads the necessary models)
+
+#### Option 2: Using the run script
+
+For convenience, a run script is provided that simplifies starting the application with or without GPU support:
+
+```bash
+# Run with CPU only
+./run.sh
+
+# Run with GPU support
+./run.sh --gpu
+
+# Run with custom GPU settings
+./run.sh --gpu --gpu-device 0 --gpu-layers 35 --gpu-count 1
+```
+
+For all available options, run:
+
+```bash
+./run.sh --help
+```
+
+### GPU Support
+
+To enable GPU support for Ollama, you can either use the run script as shown above, or set the following environment variables before running docker-compose:
+
+```bash
+# Enable GPU support
+export OLLAMA_GPU_DEVICES=0        # GPU devices to use (e.g., "0" or "0,1")
+export OLLAMA_GPU_LAYERS=35        # Number of layers to offload to GPU (higher = more GPU utilization)
+export OLLAMA_GPU_COUNT=1          # Number of GPUs to use
+export OLLAMA_GPU_MODE="shared"    # GPU mode ("shared" or "exclusive")
+
+# Then run docker-compose
+docker-compose up -d
+```
+
+The GPU settings will be ignored if you don't set these variables, allowing the application to run on CPU only.
 
 ### API Endpoints
 
