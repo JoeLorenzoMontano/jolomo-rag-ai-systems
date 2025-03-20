@@ -177,7 +177,8 @@ class OllamaClient:
                     "prompt": input_text
                 }
                 
-                response = requests.post(f"{self.base_url}/api/embeddings", json=payload)
+                # Use the /api/embed endpoint (not /api/embeddings)
+                response = requests.post(f"{self.base_url}/api/embed", json=payload)
                 response.raise_for_status()
                 result = response.json()
                 embedding = result.get("embedding", [])

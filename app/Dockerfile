@@ -15,5 +15,11 @@ COPY . .
 # Expose the FastAPI default port
 EXPOSE 8000
 
-# Command to run FastAPI application using Uvicorn
-CMD ["uvicorn", "document-processing-api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Install additional dependencies for the startup script
+RUN apt-get update && apt-get install -y curl iputils-ping && rm -rf /var/lib/apt/lists/*
+
+# Make the startup script executable
+RUN chmod +x /app/startup.sh
+
+# Command to run our startup script which then launches the application
+CMD ["/app/startup.sh"]
