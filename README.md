@@ -93,20 +93,6 @@ This system makes the following assumptions:
 
 - **POST /test-embedding?text=YOUR_TEXT**: Tests the embedding functionality with custom text (useful for debugging)
 
-### Example Usage
-
-1. Once all services are up, process the documents:
-
-```bash
-curl -X POST http://localhost:8000/process
-```
-
-2. Query the system:
-
-```bash
-curl -X GET "http://localhost:8000/query?query=What%20are%20the%20tenant%20configuration%20settings?"
-```
-
 ## Project Structure
 
 ```
