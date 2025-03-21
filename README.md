@@ -126,6 +126,17 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 - File paths become document identifiers in the system
 - Process documents using the web UI or API endpoint
 
+### Document Chunking Strategy
+
+The system intelligently splits documents into chunks for optimal retrieval:
+
+1. First splits by paragraph boundaries (double newlines)
+2. For large paragraphs, further splits by sentence boundaries
+3. Maintains overlap between chunks to preserve context
+4. Respects minimum chunk size to avoid tiny fragments
+
+This approach balances semantic coherence with efficient vector retrieval, leading to more relevant search results.
+
 ## Limitations
 
 - **Content Types**: Currently only processes text in Markdown format
