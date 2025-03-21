@@ -46,10 +46,6 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
    OLLAMA_GPU_MODE=shared
    OLLAMA_GPU_LAYERS=32
    
-   # For using Ollama on host machine (optional)
-   # HOST_OLLAMA=http://host.docker.internal:11434  # for macOS/Windows
-   # HOST_OLLAMA=http://localhost:11434             # for Linux
-   
    # For web search (optional)
    SERPER_API_KEY=your_serper_api_key_here
    ```
@@ -91,22 +87,25 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 
 ### Using Host Machine's Ollama
 
-If you already have Ollama running on your host machine, you can use it instead of running Ollama in a container:
+If you already have Ollama running on your host machine, you can use it instead of running Ollama in a container by using the dedicated docker-compose file:
 
 1. Make sure Ollama is installed and running on your host machine
-2. Create or edit your `.env` file with these settings:
-   ```
-   # Use host machine's Ollama
-   HOST_OLLAMA=http://host.docker.internal:11434  # For macOS/Windows
-   ```
-   For Linux, use this configuration instead:
-   ```
-   HOST_OLLAMA=http://localhost:11434
-   ```
+2. Create or edit your `.env` file with your LLM/embedding model settings
+3. Start the services with: 
 
-3. Start the services with: `docker-compose up -d`
+```bash
+docker-compose -f docker-compose.host.yml up -d
+```
 
-This setup directs API requests to your host's Ollama installation while still running the containerized Ollama (which won't be used). The system will use your existing models and configuration from your host machine.
+This setup directs API requests to your host's Ollama installation and doesn't run a containerized Ollama. Benefits include:
+
+- Uses your existing Ollama models (no need to re-download them)
+- Leverages your host's GPU setup
+- Easier management of Ollama models (pull, list, remove from host)
+- Lower container resource usage
+
+For macOS/Windows, the host Ollama will be accessed at `host.docker.internal:11434`.
+For Linux, the special `host-gateway` setting enables access to the host machine.
 
 ## Project Structure
 
