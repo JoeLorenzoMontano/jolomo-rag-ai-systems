@@ -11,7 +11,8 @@ services:
     volumes:
       - ./rag-documents:/app/data
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
+      # Ollama configuration - use HOST_OLLAMA to override and use host machine Ollama
+      - OLLAMA_BASE_URL=${HOST_OLLAMA:-http://ollama:11434}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - MODEL=${MODEL}
@@ -25,6 +26,7 @@ services:
       - SERPER_API_KEY=${SERPER_API_KEY}
     networks:
       - app-network
+      ${HOST_NETWORK:-}
       
   ui:
     build: ./ui
@@ -38,6 +40,7 @@ services:
       - API_URL=http://api:8000
     networks:
       - app-network
+      ${HOST_NETWORK:-}
 
   chromadb:
     image: ghcr.io/chroma-core/chroma:latest
@@ -57,6 +60,7 @@ services:
     networks:
       - app-network
 
+  # Ollama container (optional - can be disabled with USE_HOST_OLLAMA=true)
   ollama:
     image: ollama/ollama:latest
     container_name: ollama-server
@@ -81,6 +85,8 @@ services:
                 mode: ${OLLAMA_GPU_MODE:-""}
     networks:
       - app-network
+    profiles:
+      - ${OLLAMA_PROFILE:-default}
 
 volumes:
   chromadb_data:
