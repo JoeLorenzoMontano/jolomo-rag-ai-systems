@@ -175,34 +175,6 @@ The system splits documents into chunks using this strategy:
 
 This approach balances semantic coherence with vector retrieval efficiency.
 
-## Advanced Usage
-
-### Custom Prompting
-
-The system uses a specific prompt template for querying, which you can view in the `ollama_client.py` file. The prompt includes instructions to:
-
-1. Only use information from the provided context
-2. Not generate answers from external knowledge
-3. Admit when information is not available in the context
-
-This helps ensure that responses are grounded in your document collection.
-
-### Performance Tuning
-
-- **RAM Usage**: Adjust the number of workers in startup.sh files if needed
-- **Inference Speed**: GPU acceleration provides 5-10x speedup for compatible hardware
-- **Vector DB Performance**: ChromaDB scales well to thousands of documents
-- **Collection Size**: The system can handle medium-sized document collections (hundreds of files)
-
-### LLM Response Formatting
-
-The LLM response will attempt to:
-
-1. Synthesize information from matched documents
-2. Maintain consistent formatting with the source material
-3. Include relevant details while avoiding hallucinations
-4. Generate concise, focused answers to queries
-
 ## Limitations
 
 - **Content Types**: Currently only processes text in Markdown format
