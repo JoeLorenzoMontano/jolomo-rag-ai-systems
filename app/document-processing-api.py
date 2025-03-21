@@ -603,7 +603,7 @@ async def query_documents(
             "response": response, 
             "sources": cleaned_results,
             "status": "success",
-            "web_search_used": should_use_web and len(web_results) > 0,
+            "web_search_used": len(web_results) > 0,  # Only true if actual web results were found and used
             "source_type": source_type
         }
         
