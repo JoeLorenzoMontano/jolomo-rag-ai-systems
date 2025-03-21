@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . /app/
 
-# Create a new startup script (to avoid line ending issues)
+# Create a startup script, this approach helps to avoid line ending issues, permissions and removes the need for file copying
 RUN echo '#!/bin/bash' > /app/start.sh && \
     echo 'set -e' >> /app/start.sh && \
     echo 'echo "Starting UI Frontend..."' >> /app/start.sh && \

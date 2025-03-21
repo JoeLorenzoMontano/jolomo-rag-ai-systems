@@ -102,28 +102,5 @@ def query_documents():
         logging.error(f"Error querying documents: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
-@app.route('/test-embedding', methods=['GET'])
-def test_embedding_page():
-    """Render the test embedding page"""
-    return render_template('test_embedding.html')
-
-@app.route('/test-embedding', methods=['POST'])
-def test_embedding():
-    """Proxy for the test embedding API endpoint"""
-    data = request.get_json()
-    text = data.get('text', 'This is a test of the embedding functionality')
-    
-    try:
-        # Call the API
-        response = requests.post(
-            f"{API_URL}/test-embedding", 
-            params={'text': text},
-            timeout=10
-        )
-        return jsonify(response.json())
-    except Exception as e:
-        logging.error(f"Error testing embedding: {e}")
-        return jsonify({"status": "error", "message": str(e)})
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

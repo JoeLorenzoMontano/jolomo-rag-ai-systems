@@ -13,10 +13,3 @@ pre.source-text {
     max-height: 300px;
     overflow-y: auto;
 }
-
-.embedding-sample {
-    font-family: monospace;
-    word-break: break-all;
-    white-space: pre-wrap;
-    font-size: 0.8rem;
-}
