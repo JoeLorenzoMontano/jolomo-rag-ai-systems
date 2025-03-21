@@ -32,18 +32,6 @@ This system makes the following assumptions:
 
 1. **Document Format**: All documents to be processed must be in Markdown (.md) format and placed in the `rag-documents` directory
 2. **Internet Access**: Initial setup requires internet access to pull Docker images and LLM models
-3. **Resource Usage**: 
-   - Main LLM model (LLaMA2) requires approximately 4GB of RAM 
-   - ChromaDB will scale with your document collection size
-   - Docker memory limits can be adjusted in .env file if needed
-4. **Response Time Expectations**:
-   - Initial document processing may take several minutes depending on collection size
-   - Query responses typically take 5-30 seconds depending on hardware and model
-   - Web search (if enabled) may add 1-3 seconds to query time
-5. **Security Considerations**:
-   - Runs locally without external API calls (unless web search is enabled)
-   - No data leaves your environment (except when web search is used)
-   - No authentication is implemented - not intended for production use without security additions
 
 ### Quickstart Guide
 
