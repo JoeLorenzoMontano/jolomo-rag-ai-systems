@@ -2,6 +2,4 @@ fastapi
 uvicorn
 chromadb>=0.4.18
 requests
-python-dotenv
 numpy<2.0.0
-onnxruntime

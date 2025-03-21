@@ -1,8 +1,7 @@
 import requests
-import json
 import re
 import os
-from typing import List, Dict, Optional
+from typing import List, Optional
 
 class OllamaClient:
     def __init__(self, base_url: str = None, model: str = None, embedding_model: str = None):
