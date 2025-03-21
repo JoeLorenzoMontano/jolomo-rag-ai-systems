@@ -3,3 +3,4 @@ uvicorn
 chromadb>=0.4.18
 requests
 numpy<2.0.0
+nltk>=3.8.1

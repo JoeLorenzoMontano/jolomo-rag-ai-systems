@@ -141,7 +141,8 @@ doc_processor = DocumentProcessor(
 )
 
 # Initialize Query Classifier for determining when to use web search
-query_classifier = QueryClassifier(confidence_threshold=0.6)
+# Pass the ChromaDB collection to extract domain-specific terms
+query_classifier = QueryClassifier(confidence_threshold=0.6, db_collection=db_collection)
 
 # ===============================================================
 # API Endpoints
@@ -384,6 +385,28 @@ async def process_documents(
             failed += len(batch_docs)
             failed_files.extend(batch_ids)
     
+    # After processing documents, refresh the domain terms
+    try:
+        # Get document count before refresh
+        prev_term_count = len(query_classifier.product_terms)
+        
+        # Refresh terms from ChromaDB
+        query_classifier.update_terms_from_db(db_collection)
+        
+        # Get updated term count
+        new_term_count = len(query_classifier.product_terms)
+        term_update_status = {
+            "previous_term_count": prev_term_count,
+            "new_term_count": new_term_count,
+            "terms_updated": True
+        }
+    except Exception as e:
+        print(f"Error refreshing domain terms: {e}")
+        term_update_status = {
+            "terms_updated": False,
+            "error": str(e)
+        }
+    
     # Return detailed status
     if failed > 0:
         return {
@@ -394,7 +417,8 @@ async def process_documents(
             "failed_chunks": failed,
             "failed_items": failed_files,
             "chunking_enabled": temp_enable_chunking,
-            "chunk_size": temp_max_chunk_size
+            "chunk_size": temp_max_chunk_size,
+            "term_extraction": term_update_status
         }
     else:
         return {
@@ -403,7 +427,8 @@ async def process_documents(
             "total_chunks": len(all_chunks),
             "successful_chunks": successful,
             "chunking_enabled": temp_enable_chunking,
-            "chunk_size": temp_max_chunk_size
+            "chunk_size": temp_max_chunk_size,
+            "term_extraction": term_update_status
         }
 
 @app.get("/query", summary="Retrieve relevant documents", description="Query ChromaDB for the most relevant document based on input text.")
@@ -641,6 +666,47 @@ async def query_documents(
         error_response["sources"] = {"documents": [], "ids": [], "metadatas": []}
         
         return error_response
+
+@app.post("/refresh-terms", summary="Refresh domain terms", description="Refreshes the domain-specific terms used for query classification based on current document content.")
+async def refresh_domain_terms():
+    """Refresh the domain-specific terms used in query classification"""
+    try:
+        # Get document count before refresh
+        prev_term_count = len(query_classifier.product_terms)
+        
+        # Refresh terms from ChromaDB
+        query_classifier.update_terms_from_db(db_collection)
+        
+        # Get updated term count
+        new_term_count = len(query_classifier.product_terms)
+        
+        return {
+            "status": "success",
+            "message": "Domain terms refreshed successfully",
+            "previous_term_count": prev_term_count,
+            "new_term_count": new_term_count,
+            "sample_terms": query_classifier.product_terms[:10]  # Show first 10 terms as a sample
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error refreshing domain terms: {str(e)}"
+        }
+
+@app.get("/terms", summary="List domain terms", description="List the domain-specific terms used for query classification.")
+async def list_domain_terms():
+    """List the domain-specific terms used in query classification"""
+    try:
+        return {
+            "status": "success",
+            "term_count": len(query_classifier.product_terms),
+            "terms": query_classifier.product_terms
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error listing domain terms: {str(e)}"
+        }
 
 @app.get("/openapi.json", include_in_schema=False)
 def custom_openapi():

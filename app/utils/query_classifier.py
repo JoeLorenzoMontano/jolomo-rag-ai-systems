@@ -1,5 +1,19 @@
 from typing import List, Dict, Tuple, Optional, Any
 import re
+from collections import Counter
+import string
+import nltk
+from nltk.corpus import stopwords
+import logging
+
+# Initialize NLTK resources
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    try:
+        nltk.download('stopwords', quiet=True)
+    except Exception as e:
+        logging.warning(f"Could not download NLTK stopwords: {e}")
 
 class QueryClassifier:
     """
@@ -7,17 +21,19 @@ class QueryClassifier:
     web search, or a hybrid approach.
     """
     
-    def __init__(self, confidence_threshold: float = 0.6):
+    def __init__(self, confidence_threshold: float = 0.6, db_collection=None):
         """
         Initialize the classifier with DuploCloud-specific terminology.
         
         Args:
             confidence_threshold: Threshold for classification decisions (0-1)
+            db_collection: ChromaDB collection to extract domain terms from
         """
         self.confidence_threshold = confidence_threshold
+        self.logger = logging.getLogger(__name__)
         
-        # Core DuploCloud terminology for query classification
-        self.product_terms = [
+        # Default DuploCloud terminology for query classification
+        self.default_product_terms = [
             # Core concepts
             "duplocloud", "duplo", "tenant", "infrastructure", "plan",
             
@@ -37,6 +53,101 @@ class QueryClassifier:
             "resource quota", "iam role", "dns", "config settings",
             "namespace", "template"
         ]
+        
+        # Extract domain terms from ChromaDB if provided
+        self.product_terms = self.default_product_terms.copy()
+        if db_collection:
+            self.update_terms_from_db(db_collection)
+            
+    def update_terms_from_db(self, db_collection):
+        """
+        Update product terms using content stored in ChromaDB
+        
+        Args:
+            db_collection: ChromaDB collection containing document embeddings
+        """
+        try:
+            # Get all documents from the collection
+            all_docs = db_collection.get(include=["documents"])
+            if not all_docs or "documents" not in all_docs or not all_docs["documents"]:
+                self.logger.warning("No documents found in ChromaDB for term extraction")
+                return
+                
+            # Process documents to extract important terms
+            doc_text = " ".join(all_docs["documents"])
+            extracted_terms = self._extract_important_terms(doc_text)
+            
+            # Merge with default terms, keeping originals and adding new ones
+            self.product_terms = list(set(self.default_product_terms + extracted_terms))
+            
+            self.logger.info(f"Updated product terms from ChromaDB: Found {len(self.product_terms)} terms")
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting terms from ChromaDB: {e}")
+            # Fall back to default terms
+            self.product_terms = self.default_product_terms.copy()
+            
+    def _extract_important_terms(self, text, min_length=4, max_terms=50):
+        """
+        Extract important domain-specific terms from text
+        
+        Args:
+            text: The text to analyze
+            min_length: Minimum length for a term to be considered
+            max_terms: Maximum number of terms to return
+            
+        Returns:
+            List of important terms
+        """
+        # Convert to lowercase and tokenize by splitting on whitespace and punctuation
+        text = text.lower()
+        
+        # Remove punctuation and numbers
+        translator = str.maketrans('', '', string.punctuation + string.digits)
+        text = text.translate(translator)
+        
+        # Split into words
+        words = text.split()
+        
+        # Remove common English stopwords
+        try:
+            stop_words = set(stopwords.words('english'))
+            words = [word for word in words if word not in stop_words]
+        except Exception as e:
+            self.logger.warning(f"Could not filter stopwords: {e}")
+        
+        # Filter out short words
+        words = [word for word in words if len(word) >= min_length]
+        
+        # Count word frequencies
+        word_counts = Counter(words)
+        
+        # Extract the most common terms (excluding very common words)
+        common_terms = [term for term, count in word_counts.most_common(max_terms * 2)]
+        
+        # Also extract bigrams (pairs of consecutive words)
+        bigrams = []
+        for i in range(len(words) - 1):
+            bigram = words[i] + " " + words[i+1]
+            if len(bigram) >= min_length:
+                bigrams.append(bigram)
+                
+        # Count bigram frequencies
+        bigram_counts = Counter(bigrams)
+        
+        # Extract the most common bigrams
+        common_bigrams = [term for term, count in bigram_counts.most_common(max_terms)]
+        
+        # Combine unigrams and bigrams, prioritizing more specific terms
+        all_terms = common_bigrams + common_terms
+        
+        # Remove duplicates while preserving order
+        unique_terms = []
+        for term in all_terms:
+            if term not in unique_terms:
+                unique_terms.append(term)
+                
+        return unique_terms[:max_terms]
     
     def classify(self, 
                 query: str, 
