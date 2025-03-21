@@ -6,22 +6,14 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 
 This application implements a full-stack Retrieval-Augmented Generation (RAG) pipeline with these key components:
 
-- **API Backend** (FastAPI): Handles document processing, embedding generation, vector storage, and query processing
-- **Web Frontend** (Flask): Provides a user-friendly interface for interacting with the RAG system 
-- **Vector Database** (ChromaDB): Stores document embeddings and enables semantic search
-- **LLM Service** (Ollama): Provides local AI model inference for embeddings and response generation
-- **Web Search** (Optional): Augments RAG with internet search results via Serper.dev API
-
-## Components in Detail
-
-- **FastAPI Backend**: Provides RESTful API endpoints for document processing, querying, and system health monitoring
-- **Flask Web UI**: Offers an intuitive interface for querying documents and visualizing results with source attribution
-- **ChromaDB**: Persistent vector database that stores document embeddings and enables semantic similarity search
-- **Ollama**: Local inference server that runs open-source LLMs without requiring cloud API access
+- **API Backend** (FastAPI): Provides RESTful endpoints for document processing, embedding generation, vector storage, querying, and system health monitoring
+- **Web Frontend** (Flask): Offers an intuitive interface for querying documents and visualizing results with source attribution
+- **Vector Database** (ChromaDB): Persistent database that stores document embeddings and enables semantic similarity search
+- **LLM Service** (Ollama): Local inference server that runs open-source LLMs without requiring cloud API access
   - Uses LLaMA2 (7B) for generating responses (configurable)
   - Uses all-minilm:l6-v2 for generating embeddings (configurable)
 - **Document Chunking System**: Intelligently splits documents into semantic chunks with configurable parameters
-- **Web Search Integration**: Optional feature to supplement RAG results with internet-sourced information
+- **Web Search Integration** (Optional): Supplements RAG results with internet-sourced information via Serper.dev API
 
 ## Setup and Usage
 
