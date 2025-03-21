@@ -594,7 +594,7 @@ async def query_documents(
             "metadatas": metadatas,
             "distances": distances,
             "combined_chunks": combine_chunks,
-            "web_results": web_results if web_search and web_results else []
+            "web_results": web_results if web_results else []
         }
         
         # Prepare response
