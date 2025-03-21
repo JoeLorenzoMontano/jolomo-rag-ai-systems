@@ -1,59 +1,97 @@
-# Document Processing API
+# Document Processing API with Web UI
 
-A RAG (Retrieval-Augmented Generation) application that processes documents, stores their embeddings in ChromaDB, and uses Ollama to generate responses to user queries based on the most relevant documents.
+A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB, and generates AI responses based on the most relevant content. The system includes both an API backend and a web-based user interface.
 
-## Components
+## Architecture Overview
 
-- **FastAPI**: Web server for document processing and querying
-- **ChromaDB**: Vector database for storing document embeddings
-- **Ollama**: Local LLM service for generating embeddings and responses
+This application implements a full-stack Retrieval-Augmented Generation (RAG) pipeline with these key components:
+
+- **API Backend** (FastAPI): Handles document processing, embedding generation, vector storage, and query processing
+- **Web Frontend** (Flask): Provides a user-friendly interface for interacting with the RAG system 
+- **Vector Database** (ChromaDB): Stores document embeddings and enables semantic search
+- **LLM Service** (Ollama): Provides local AI model inference for embeddings and response generation
+- **Web Search** (Optional): Augments RAG with internet search results via Serper.dev API
+
+## Components in Detail
+
+- **FastAPI Backend**: Provides RESTful API endpoints for document processing, querying, and system health monitoring
+- **Flask Web UI**: Offers an intuitive interface for querying documents and visualizing results with source attribution
+- **ChromaDB**: Persistent vector database that stores document embeddings and enables semantic similarity search
+- **Ollama**: Local inference server that runs open-source LLMs without requiring cloud API access
+  - Uses LLaMA2 (7B) for generating responses (configurable)
+  - Uses all-minilm:l6-v2 for generating embeddings (configurable)
+- **Document Chunking System**: Intelligently splits documents into semantic chunks with configurable parameters
+- **Web Search Integration**: Optional feature to supplement RAG results with internet-sourced information
 
 ## Setup and Usage
 
 ### Prerequisites
 
-- Docker and Docker Compose
+- **Docker Engine** (version 20.10.0 or higher)
+- **Docker Compose** (version 2.0.0 or higher)
+- At least 8GB of RAM available for Docker
+- At least 10GB of free disk space
+- Internet access for pulling container images and (optionally) web search functionality
+- (Optional) NVIDIA GPU with compatible drivers for GPU acceleration
 
-### Running the Application
+### System Requirements and Assumptions
 
-#### Option 1: Using docker-compose directly
+This system makes the following assumptions:
+
+1. **Document Format**: All documents to be processed must be in Markdown (.md) format and placed in the `rag-documents` directory
+2. **Internet Access**: Initial setup requires internet access to pull Docker images and LLM models
+3. **Resource Usage**: 
+   - Main LLM model (LLaMA2) requires approximately 4GB of RAM 
+   - ChromaDB will scale with your document collection size
+   - Docker memory limits can be adjusted in .env file if needed
+4. **Response Time Expectations**:
+   - Initial document processing may take several minutes depending on collection size
+   - Query responses typically take 5-30 seconds depending on hardware and model
+   - Web search (if enabled) may add 1-3 seconds to query time
+5. **Security Considerations**:
+   - Runs locally without external API calls (unless web search is enabled)
+   - No data leaves your environment (except when web search is used)
+   - No authentication is implemented - not intended for production use without security additions
+
+### Quickstart Guide
 
 1. Clone this repository
 2. Navigate to the project directory
-3. Run:
+3. (Optional) Create a `.env` file for configuration:
+   ```
+   # For GPU support
+   OLLAMA_GPU_DEVICES=all
+   OLLAMA_GPU_COUNT=1
+   OLLAMA_GPU_MODE=shared
+   OLLAMA_GPU_LAYERS=32
+   
+   # For web search (optional)
+   SERPER_API_KEY=your_serper_api_key_here
+   ```
+4. Start all services:
+   ```bash
+   docker-compose up -d
+   ```
+5. Wait for all services to initialize (this may take 5-10 minutes on first run as models are downloaded)
+6. Access the web interface at http://localhost:5000
+7. Process documents:
+   - Go to http://localhost:5000/process and click "Process Documents", or
+   - Use API directly: `curl -X POST http://localhost:8000/process`
+8. Start querying your documents through the web UI or API
 
-```bash
-docker-compose up -d
-```
+### Accessing the Services
 
-4. Wait for all services to start (this may take some time as Ollama downloads the necessary models)
-
-#### Option 2: Using the run script
-
-For convenience, a run script is provided that simplifies starting the application with or without GPU support:
-
-```bash
-# Run with CPU only
-./run.sh
-
-# Run with GPU support
-./run.sh --gpu
-
-# Run with custom GPU settings
-./run.sh --gpu --gpu-device 0 --gpu-layers 35 --gpu-count 1
-```
-
-For all available options, run:
-
-```bash
-./run.sh --help
-```
+- **Web UI**: http://localhost:5000
+- **API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+- **ChromaDB**: http://localhost:8001 (direct database access)
+- **Ollama**: http://localhost:11434 (LLM server)
 
 ### Configuration Options
 
 #### GPU Support
 
-To enable GPU support for Ollama, you can either use the run script as shown above, or set the following environment variables before running docker-compose:
+To enable GPU support for Ollama, set the following environment variables before running docker-compose:
 
 ```bash
 # Enable GPU support
@@ -127,14 +165,10 @@ Note: Web search requires an active internet connection and uses the Serper.dev 
 
 The application supports document chunking for improved retrieval performance. Chunking divides large documents into smaller pieces with some overlap, which helps make embeddings more focused and retrieval more accurate.
 
-You can configure chunking with the following options:
+You can configure chunking with the following environment variables:
 
 ```bash
-# Using the run script
-./run.sh --chunk-size 1500 --chunk-overlap 150 --min-chunk-size 300
-./run.sh --no-chunking  # To disable chunking
-
-# Or with environment variables
+# Set chunking parameters
 export ENABLE_CHUNKING=true     # Enable/disable chunking (default: true)
 export MAX_CHUNK_SIZE=1000      # Maximum characters per chunk (default: 1000)
 export MIN_CHUNK_SIZE=200       # Minimum size for a chunk (default: 200)
@@ -188,17 +222,110 @@ curl -X POST http://localhost:8000/process
 curl -X GET "http://localhost:8000/query?query=What%20are%20the%20tenant%20configuration%20settings?"
 ```
 
-## Directory Structure
+## Project Structure
 
-- `/app`: Contains the FastAPI application code
-- `/rag-documents`: Contains markdown documents to be processed
-- `/docker-compose.yml`: Docker Compose configuration for all services
+```
+.
+├── .env                            # Environment variables (create this file)
+├── app/                            # API Backend (FastAPI)
+│   ├── Dockerfile                  # Container definition for API
+│   ├── document-processing-api.py  # Main FastAPI application
+│   ├── requirements.txt            # Python dependencies
+│   ├── startup.sh                  # API startup script
+│   └── utils/                      # Utility modules
+│       ├── ollama_client.py        # Ollama API client
+│       └── web_search.py           # Web search integration
+├── docker-compose.yml              # Container orchestration config
+├── rag-documents/                  # Document collection to process
+│   ├── *.md                        # Markdown documents
+│   └── tenant/                     # Example subdirectory
+├── ui/                             # Web Frontend (Flask)
+│   ├── Dockerfile                  # Container definition for UI
+│   ├── app.py                      # Main Flask application
+│   ├── requirements.txt            # Python dependencies
+│   ├── static/                     # Static assets
+│   └── templates/                  # HTML templates
+```
+
+### Key Files
+
+- **document-processing-api.py**: Core RAG implementation with document processing, embedding, and retrieval logic
+- **docker-compose.yml**: Defines all services, networking, and volume configuration
+- **ollama_client.py**: Handles communication with Ollama LLM service for embeddings and completions
+- **web_search.py**: Implements the web search functionality using Serper.dev API
+- **ui/app.py**: Flask application for the web interface
+
+## Working with Documents
+
+### Document Requirements
+
+- Documents must be in Markdown (.md) format
+- Place all documents in the `rag-documents` directory or its subdirectories 
+- Documents will be recursively processed from all subdirectories
+- File paths become document identifiers in the system
+
+### Adding or Updating Documents
+
+1. Add your markdown files to the `rag-documents` directory
+2. Run the processing endpoint to index them:
+   ```bash
+   curl -X POST http://localhost:8000/process
+   ```
+   Or use the Process Documents page in the web UI
+
+3. Verify documents were processed through the health endpoint:
+   ```bash
+   curl http://localhost:8000/health
+   ```
+   Check the `collection.document_count` field
+
+### Document Chunking Strategy
+
+The system splits documents into chunks using this strategy:
+
+1. First splits by paragraph boundaries (double newlines)
+2. For large paragraphs, further splits by sentence boundaries
+3. Maintains overlap between chunks to preserve context
+4. Respects minimum chunk size to avoid tiny fragments
+
+This approach balances semantic coherence with vector retrieval efficiency.
 
 ## Troubleshooting
 
-- If you encounter issues with the Ollama service, check the logs with `docker logs ollama-server`
-- If you encounter issues with ChromaDB, check the logs with `docker logs chromadb`
-- If you need to reset the system, you can run `docker-compose down -v` to remove all volumes and containers, then `docker-compose up -d` to start fresh
+### Viewing Logs
+
+```bash
+# View logs from all services
+docker-compose logs
+
+# View logs from a specific service
+docker-compose logs api
+docker-compose logs ui
+docker-compose logs ollama
+docker-compose logs chromadb
+
+# Follow logs in real-time
+docker-compose logs -f
+```
+
+### Common Problems and Solutions
+
+- **Startup Failures**: If services fail to start, check for port conflicts. The system requires ports 5000, 8000, 8001, and 11434.
+
+- **Processing Hangs**: Document processing may time out with very large documents. Try disabling chunking or adjusting chunk parameters.
+
+- **Out of Memory**: If you encounter OOM errors, increase Docker's memory allocation or reduce model layers.
+
+- **System Reset**: To completely reset the system, remove all data and containers:
+  ```bash
+  docker-compose down -v
+  docker-compose up -d
+  ```
+
+- **GPU Not Detected**: Check if your GPU is visible to Docker:
+  ```bash
+  docker run --rm --gpus all nvidia/cuda:11.6.2-base-ubuntu20.04 nvidia-smi
+  ```
 
 ### Common Issues
 
@@ -237,7 +364,7 @@ If you encounter connection issues with ChromaDB, try:
 If GPU acceleration isn't working:
 1. Verify your system has NVIDIA drivers installed
 2. Check that the Docker NVIDIA runtime is installed
-3. Ensure your GPU is compatible with the layers setting (try reducing `--gpu-layers`)
+3. Ensure your GPU is compatible with the layers setting (try reducing OLLAMA_GPU_LAYERS)
 
 #### Windows WSL2 GPU Support Considerations
 
@@ -263,3 +390,41 @@ If you're using Windows with Docker Desktop and WSL2, there are additional requi
    - Update Docker Desktop to the latest version
    - Make sure WSL2 is set as the default WSL version: `wsl --set-default-version 2`
    - Check GPU is visible inside WSL2: `wsl --distribution <your-distro> --exec nvidia-smi`
+
+## Advanced Usage
+
+### Custom Prompting
+
+The system uses a specific prompt template for querying, which you can view in the `ollama_client.py` file. The prompt includes instructions to:
+
+1. Only use information from the provided context
+2. Not generate answers from external knowledge
+3. Admit when information is not available in the context
+
+This helps ensure that responses are grounded in your document collection.
+
+### Performance Tuning
+
+- **RAM Usage**: Adjust the number of workers in startup.sh files if needed
+- **Inference Speed**: GPU acceleration provides 5-10x speedup for compatible hardware
+- **Vector DB Performance**: ChromaDB scales well to thousands of documents
+- **Collection Size**: The system can handle medium-sized document collections (hundreds of files)
+
+### LLM Response Formatting
+
+The LLM response will attempt to:
+
+1. Synthesize information from matched documents
+2. Maintain consistent formatting with the source material
+3. Include relevant details while avoiding hallucinations
+4. Generate concise, focused answers to queries
+
+## Limitations
+
+- **Content Types**: Currently only processes text in Markdown format
+- **Language Support**: Best performance with English language content
+- **Token Limits**: There are context size limits (typically ~4000 tokens)
+- **Response Quality**: Depends on the quality and relevance of the document collection
+- **Inference Speed**: Local models are slower than cloud-based alternatives
+- **No Authentication**: The system has no built-in security features and should not be exposed publicly
+- **Web Search Limitations**: Web search relies on the Serper.dev API which may have rate limits or costs
