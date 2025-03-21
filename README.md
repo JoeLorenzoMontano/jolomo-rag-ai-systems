@@ -53,7 +53,7 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
    ```bash
    docker-compose up -d
    ```
-5. Wait for all services to initialize (this may take 5-10 minutes on first run as models are downloaded)
+5. Wait for all services to initialize (this may take a few minutes on first run due to the models needing to be downloaded)
 6. Access the web interface at http://localhost:5000
 7. Process documents:
    - Go to http://localhost:5000/process and click "Process Documents", or
