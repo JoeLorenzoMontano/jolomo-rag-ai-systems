@@ -80,10 +80,15 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
   - Optional query parameters:
     - `n_results`: Number of results to return (default: 3)
     - `combine_chunks`: Whether to combine chunks from the same document (default: true)
-    - `web_search`: Whether to augment with web search results (default: false)
+    - `web_search`: Whether to augment with web search results (null for auto-classification, true or false to explicitly set)
     - `web_results_count`: Number of web search results to include (default: 5)
+    - `explain_classification`: Whether to include query classification explanation (default: false)
 
 - **GET /health**: Returns detailed health status of all services and components
+
+- **GET /terms**: Lists all domain-specific terms currently used by the query classifier
+
+- **POST /refresh-terms**: Manually refreshes the domain-specific terms by extracting terminology from the current document collection
 
 ### Using Host Machine's Ollama
 
@@ -138,6 +143,8 @@ For Linux, the special `host-gateway` setting enables access to the host machine
 - **docker-compose.yml**: Defines all services, networking, and volume configuration
 - **ollama_client.py**: Handles communication with Ollama LLM service for embeddings and completions
 - **web_search.py**: Implements the web search functionality using Serper.dev API
+- **query_classifier.py**: Intelligently determines when to use document retrieval vs. web search
+- **document_processor.py**: Handles document chunking and preparation strategies
 - **ui/app.py**: Flask application for the web interface
 
 ## Working with Documents
@@ -158,6 +165,28 @@ The system intelligently splits documents into chunks for optimal retrieval:
 4. Respects minimum chunk size to avoid tiny fragments
 
 This approach balances semantic coherence with efficient vector retrieval, leading to more relevant search results.
+
+### Query Classification System
+
+The system uses an intelligent classification mechanism to determine the optimal information source:
+
+1. **Dynamic Domain Term Extraction**: Extracts important terminology from the document corpus
+   - Analyzes document frequency and significance
+   - Combines with predefined domain terms
+   - Automatically updates when new documents are processed
+   - Extracts both single terms and multi-word phrases
+
+2. **Source Selection Logic**:
+   - **Document Source**: Used when query contains domain-specific terminology or matches existing content well
+   - **Web Search Source**: Used when query contains general knowledge questions outside document scope
+   - **Hybrid Approach**: Used when confidence is moderate and both sources may contribute
+
+3. **Classification Visualization**:
+   - Toggle "Show Classification Details" to see how your query was classified
+   - Displays matched domain terms and confidence scores
+   - Shows a visual breakdown of the classification decision
+
+The classifier automatically refreshes its domain term knowledge when documents are processed, ensuring it stays up-to-date with the content collection. You can also manually refresh terms or view the current term list using the dedicated API endpoints.
 
 ## Limitations
 
