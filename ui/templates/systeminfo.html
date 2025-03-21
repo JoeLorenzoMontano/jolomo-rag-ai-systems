@@ -232,10 +232,10 @@
                     `;
                     
                     // API status
-                    const apiStatus = data.api.status === 'healthy' ? 'success' : 'danger';
+                    const apiStatus = data.api.api === 'healthy' ? 'success' : 'danger';
                     html += `
                         <div class="mb-2">
-                            <strong>API:</strong> <span class="badge text-bg-${apiStatus}">${data.api.status}</span>
+                            <strong>API:</strong> <span class="badge text-bg-${apiStatus}">${data.api.api}</span>
                         </div>
                     `;
                     
