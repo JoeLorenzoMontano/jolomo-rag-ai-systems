@@ -17,18 +17,12 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 
 ## Setup and Usage
 
-### Prerequisites
+### Prerequisites and Requirements
 
 - **Docker Engine** and **Docker Compose**
-- Internet access for pulling container images and (optionally) web search functionality
+- Internet access for pulling container images, LLM models, and (optionally) web search functionality
 - (Optional) NVIDIA GPU with compatible drivers for GPU acceleration
-
-### System Requirements and Assumptions
-
-This system makes the following assumptions:
-
-1. **Document Format**: All documents to be processed must be in Markdown (.md) format and placed in the `rag-documents` directory
-2. **Internet Access**: Initial setup requires internet access to pull Docker images and LLM models
+- Documents must be in Markdown (.md) format and placed in the `rag-documents` directory
 
 ### Quickstart Guide
 
@@ -90,8 +84,6 @@ This system makes the following assumptions:
     - `web_results_count`: Number of web search results to include (default: 5)
 
 - **GET /health**: Returns detailed health status of all services and components
-
-- **POST /test-embedding?text=YOUR_TEXT**: Tests the embedding functionality with custom text (useful for debugging)
 
 ## Project Structure
 
