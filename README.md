@@ -19,10 +19,7 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 
 ### Prerequisites
 
-- **Docker Engine** (version 20.10.0 or higher)
-- **Docker Compose** (version 2.0.0 or higher)
-- At least 8GB of RAM available for Docker
-- At least 10GB of free disk space
+- **Docker Engine** and **Docker Compose**
 - Internet access for pulling container images and (optionally) web search functionality
 - (Optional) NVIDIA GPU with compatible drivers for GPU acceleration
 
