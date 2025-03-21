@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Query Documents</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
@@ -37,9 +38,20 @@
                         </div>
                         
                         <div class="col-md-6">
-                            <div class="form-check form-switch mt-4">
+                            <div class="form-check form-switch mt-4 mb-2">
                                 <input class="form-check-input" type="checkbox" id="combine-chunks" checked>
                                 <label class="form-check-label" for="combine-chunks">Combine Chunks from Same Document</label>
+                            </div>
+                            
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="web-search">
+                                <label class="form-check-label" for="web-search">Include Web Search Results</label>
+                            </div>
+                            
+                            <div id="web-search-options" class="mt-2 d-none">
+                                <label for="web-results-count" class="form-label">Number of Web Results</label>
+                                <input type="number" class="form-control" id="web-results-count" value="5" min="1" max="10">
+                                <div class="form-text">Number of web search results to include</div>
                             </div>
                         </div>
                     </div>
@@ -82,6 +94,17 @@
             const responseContent = document.getElementById('response-content');
             const sourcesCard = document.getElementById('sources-card');
             const sourcesContent = document.getElementById('sources-content');
+            const webSearchCheckbox = document.getElementById('web-search');
+            const webSearchOptions = document.getElementById('web-search-options');
+            
+            // Toggle web search options visibility
+            webSearchCheckbox.addEventListener('change', () => {
+                if (webSearchCheckbox.checked) {
+                    webSearchOptions.classList.remove('d-none');
+                } else {
+                    webSearchOptions.classList.add('d-none');
+                }
+            });
             
             // Process form submission
             queryForm.addEventListener('submit', async (e) => {
@@ -97,6 +120,8 @@
                 const queryText = document.getElementById('query-text').value.trim();
                 const nResults = document.getElementById('n-results').value;
                 const combineChunks = document.getElementById('combine-chunks').checked;
+                const webSearch = document.getElementById('web-search').checked;
+                const webResultsCount = document.getElementById('web-results-count').value;
                 
                 if (!queryText) {
                     alert('Please enter a question');
@@ -132,7 +157,9 @@
                         body: JSON.stringify({
                             query: queryText,
                             n_results: nResults,
-                            combine_chunks: combineChunks
+                            combine_chunks: combineChunks,
+                            web_search: webSearch,
+                            web_results_count: webResultsCount
                         }),
                         signal: controller.signal
                     });
@@ -159,6 +186,7 @@
                             
                             let sourcesHtml = '<div class="accordion" id="sourcesAccordion">';
                             
+                            // Add vector database sources
                             data.sources.documents.forEach((doc, index) => {
                                 const metadata = data.sources.metadatas[index] || {};
                                 const distance = data.sources.distances ? data.sources.distances[index] : null;
@@ -170,6 +198,7 @@
                                             <button class="accordion-button ${index > 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${index}" aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="collapse${index}">
                                                 <strong>${metadata.filename || sourceId}</strong>
                                                 ${distance !== null ? ` <span class="ms-2 badge bg-secondary">Similarity: ${(1 - distance).toFixed(3)}</span>` : ''}
+                                                <span class="ms-2 badge bg-info">Local Document</span>
                                             </button>
                                         </h2>
                                         <div id="collapse${index}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" aria-labelledby="heading${index}" data-bs-parent="#sourcesAccordion">
@@ -181,7 +210,44 @@
                                 `;
                             });
                             
+                            // Add web search results if available
+                            if (data.sources.web_results && data.sources.web_results.length > 0) {
+                                let startIdx = data.sources.documents.length;
+                                
+                                data.sources.web_results.forEach((result, idx) => {
+                                    const index = startIdx + idx;
+                                    sourcesHtml += `
+                                        <div class="accordion-item">
+                                            <h2 class="accordion-header" id="heading${index}">
+                                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${index}" aria-expanded="false" aria-controls="collapse${index}">
+                                                    <strong>${result.title}</strong>
+                                                    <span class="ms-2 badge bg-warning">Web Result</span>
+                                                </button>
+                                            </h2>
+                                            <div id="collapse${index}" class="accordion-collapse collapse" aria-labelledby="heading${index}" data-bs-parent="#sourcesAccordion">
+                                                <div class="accordion-body">
+                                                    <div class="mb-2">
+                                                        <strong>Source:</strong> <a href="${result.url}" target="_blank">${result.source} - ${result.url}</a>
+                                                    </div>
+                                                    <pre class="source-text">${result.content}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                });
+                            }
+                            
                             sourcesHtml += '</div>';
+                            
+                            // Add web search indicator if web search was used
+                            if (data.web_search_used) {
+                                sourcesHtml = `
+                                    <div class="alert alert-info mb-3">
+                                        <i class="bi bi-info-circle"></i> Results include web search data from Serper API.
+                                    </div>
+                                ` + sourcesHtml;
+                            }
+                            
                             sourcesContent.innerHTML = sourcesHtml;
                         }
                     }

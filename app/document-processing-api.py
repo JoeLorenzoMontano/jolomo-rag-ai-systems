@@ -1,13 +1,14 @@
 from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import chromadb
 import os
 import re
 import requests
 import time as import_time
 from utils.ollama_client import OllamaClient
+from utils.web_search import WebSearchClient
 
 # Initialize FastAPI app
 app = FastAPI(title="Document Processing API", description="API for storing and retrieving documents with embeddings.", version="1.0")
@@ -87,6 +88,10 @@ except Exception as e:
 
 # Initialize Ollama Client
 ollama_client = OllamaClient()
+
+# Initialize Web Search Client with Serper API key from environment
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+web_search_client = WebSearchClient(serper_api_key=SERPER_API_KEY)
 
 # Health check endpoints
 @app.get("/", summary="Root endpoint", description="Returns a simple message indicating the API is running.")
@@ -613,7 +618,9 @@ async def process_documents(
 async def query_documents(
     query: str,
     n_results: int = Query(3, description="Number of results to return"),
-    combine_chunks: bool = Query(True, description="Whether to combine chunks from the same document")
+    combine_chunks: bool = Query(True, description="Whether to combine chunks from the same document"),
+    web_search: bool = Query(False, description="Whether to augment with web search results"),
+    web_results_count: int = Query(5, description="Number of web search results to include")
 ):
     try:
         # Check if ChromaDB has any documents at all
@@ -737,14 +744,30 @@ async def query_documents(
         
         # Get the best matching document (first result)
         best_match = docs[0] if docs else ""
-            
+        
         # Generate a response based on the best match using Ollama
         context = best_match
         
         # If the context is too short and we have multiple results, add more context
         if len(context.split()) < 100 and len(docs) > 1:
             context = docs[0] + "\n\n" + docs[1]
-            
+        
+        # Add web search results if enabled
+        web_results = []
+        if web_search and SERPER_API_KEY:
+            try:
+                print(f"Performing web search for query: {query}")
+                web_results = web_search_client.search_with_serper(query, num_results=web_results_count)
+                
+                if web_results:
+                    # Format web results and add to context
+                    web_context = web_search_client.format_results_as_context(web_results)
+                    context = web_context + "\n\n" + context
+                    print(f"Added {len(web_results)} web search results to context")
+            except Exception as e:
+                print(f"Error during web search: {e}")
+                # Continue with only vector DB results
+        
         response = ollama_client.generate_response(context=context, query=query)
         
         # Clean up the response for better frontend rendering
@@ -753,14 +776,16 @@ async def query_documents(
             "ids": ids,
             "metadatas": metadatas,
             "distances": distances,
-            "combined_chunks": combine_chunks
+            "combined_chunks": combine_chunks,
+            "web_results": web_results if web_search and web_results else []
         }
         
         return {
             "query": query, 
             "response": response, 
             "sources": cleaned_results,
-            "status": "success"
+            "status": "success",
+            "web_search_used": web_search and len(web_results) > 0
         }
     except Exception as e:
         print(f"Error in query_documents: {e}")

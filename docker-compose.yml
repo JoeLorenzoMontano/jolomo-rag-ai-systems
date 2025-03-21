@@ -21,6 +21,8 @@ services:
       - MAX_CHUNK_SIZE=1000
       - MIN_CHUNK_SIZE=200
       - CHUNK_OVERLAP=100
+      # Web search settings
+      - SERPER_API_KEY=${SERPER_API_KEY}
     networks:
       - app-network
       

@@ -82,6 +82,8 @@ def query_documents():
     query_text = data.get('query', '')
     n_results = data.get('n_results', 3)
     combine_chunks = data.get('combine_chunks', True)
+    web_search = data.get('web_search', False)
+    web_results_count = data.get('web_results_count', 5)
     
     if not query_text:
         return jsonify({"status": "error", "message": "Query text is required"})
@@ -93,7 +95,9 @@ def query_documents():
             params={
                 'query': query_text,
                 'n_results': n_results,
-                'combine_chunks': combine_chunks
+                'combine_chunks': combine_chunks,
+                'web_search': web_search,
+                'web_results_count': web_results_count
             },
             timeout=None
         )
