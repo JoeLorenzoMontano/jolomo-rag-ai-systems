@@ -47,9 +47,8 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
    OLLAMA_GPU_LAYERS=32
    
    # For using Ollama on host machine (optional)
-   # USE_HOST_OLLAMA=true
-   # HOST_OLLAMA=http://host.docker.internal:11434
-   # OLLAMA_PROFILE=noollama
+   # HOST_OLLAMA=http://host.docker.internal:11434  # for macOS/Windows
+   # HOST_OLLAMA=http://localhost:11434             # for Linux
    
    # For web search (optional)
    SERPER_API_KEY=your_serper_api_key_here
@@ -98,21 +97,16 @@ If you already have Ollama running on your host machine, you can use it instead 
 2. Create or edit your `.env` file with these settings:
    ```
    # Use host machine's Ollama
-   USE_HOST_OLLAMA=true
    HOST_OLLAMA=http://host.docker.internal:11434  # For macOS/Windows
-   OLLAMA_PROFILE=noollama
    ```
    For Linux, use this configuration instead:
    ```
-   USE_HOST_OLLAMA=true
    HOST_OLLAMA=http://localhost:11434
-   HOST_NETWORK=host
-   OLLAMA_PROFILE=noollama
    ```
 
-3. Start the services: `docker-compose up -d`
+3. Start the services with: `docker-compose up -d`
 
-This setup lets you leverage existing models and configuration from your host Ollama installation.
+This setup directs API requests to your host's Ollama installation while still running the containerized Ollama (which won't be used). The system will use your existing models and configuration from your host machine.
 
 ## Project Structure
 
