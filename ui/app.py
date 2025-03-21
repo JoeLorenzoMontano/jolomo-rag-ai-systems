@@ -108,5 +108,67 @@ def query_documents():
         logging.error(f"Error querying documents: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
+@app.route('/systeminfo', methods=['GET'])
+def systeminfo_page():
+    """Render the system information page"""
+    return render_template('systeminfo.html')
+
+@app.route('/api/chroma-info', methods=['GET'])
+def chroma_info():
+    """Get information about ChromaDB"""
+    try:
+        # Check collection status
+        response = requests.get(f"{API_URL}/health", timeout=10)
+        health_data = response.json()
+        
+        # Extract ChromaDB information
+        chroma_info = {
+            "status": "success",
+            "server_version": health_data.get("chroma", "unknown"),
+            "api_status": health_data.get("api", "unknown"),
+            "document_count": 0,
+            "collection_count": 0
+        }
+        
+        # Check collection information
+        if "collection" in health_data and health_data["collection"]["status"] == "healthy":
+            chroma_info["document_count"] = health_data["collection"]["document_count"]
+            chroma_info["collection_count"] = 1  # We only have one collection in this app
+            
+        return jsonify(chroma_info)
+    except Exception as e:
+        logging.error(f"Error getting ChromaDB info: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/terms', methods=['GET'])
+def get_terms():
+    """Get classification terms from the API"""
+    try:
+        response = requests.get(f"{API_URL}/terms", timeout=10)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error getting terms: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/refresh-terms', methods=['POST'])
+def refresh_terms():
+    """Refresh classification terms from the API"""
+    try:
+        response = requests.post(f"{API_URL}/refresh-terms", timeout=20)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error refreshing terms: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/health', methods=['GET'])
+def api_health():
+    """Get full health status from the API"""
+    try:
+        response = requests.get(f"{API_URL}/health", timeout=10)
+        return jsonify({"api": response.json()})
+    except Exception as e:
+        logging.error(f"Error getting health status: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
