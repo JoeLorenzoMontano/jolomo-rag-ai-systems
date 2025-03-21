@@ -95,7 +95,7 @@ def query_documents():
                 'n_results': n_results,
                 'combine_chunks': combine_chunks
             },
-            timeout=30
+            timeout=None
         )
         return jsonify(response.json())
     except Exception as e:
