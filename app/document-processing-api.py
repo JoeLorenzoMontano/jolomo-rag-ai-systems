@@ -811,36 +811,6 @@ async def query_documents(
         
         return error_response
 
-# Custom OpenAPI documentation
-@app.post("/test-embedding", summary="Test embedding generation", description="Tests the embedding generation with provided text.")
-async def test_embedding(text: str = "This is a test of the embedding functionality"):
-    """
-    Endpoint to test embedding generation with custom text.
-    Useful for diagnosing embedding issues.
-    """
-    try:
-        # Generate embedding
-        start_time = import_time()
-        embedding = ollama_client.generate_embedding(text)
-        end_time = import_time()
-        
-        # Return detailed information about the embedding
-        return {
-            "status": "success",
-            "model": ollama_client.embedding_model,
-            "text_length": len(text),
-            "embedding_length": len(embedding),
-            "embedding_sample": embedding[:5],  # Just show the first few elements
-            "processing_time_ms": round((end_time - start_time) * 1000, 2),
-            "response_format": "embeddings array" if isinstance(embedding, list) else type(embedding).__name__
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "model": ollama_client.embedding_model,
-            "error": str(e)
-        }
-
 @app.get("/openapi.json", include_in_schema=False)
 def custom_openapi():
     return get_openapi(
