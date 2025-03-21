@@ -85,6 +85,44 @@ export EMBEDDING_MODEL=nomic-embed-text  # For generating embeddings
 docker-compose up -d
 ```
 
+#### Web Search API Integration
+
+To enable the web search feature with Serper.dev API:
+
+```bash
+# Set the Serper API key
+export SERPER_API_KEY=your_serper_api_key_here
+
+# Then run docker-compose
+docker-compose up -d
+```
+
+#### Web Search Integration
+
+The application includes an optional web search feature that can augment the RAG results with information from the internet. This is particularly useful for queries that may require up-to-date information not available in your local document collection.
+
+To use the web search feature:
+
+1. Set the Serper API key as an environment variable:
+
+```bash
+# Add to your .env file or set directly
+export SERPER_API_KEY=your_serper_api_key_here
+```
+
+2. Enable web search in your queries:
+
+```bash
+# Enable web search with 5 results
+curl -X GET "http://localhost:8000/query?query=Your%20question&web_search=true&web_results_count=5"
+```
+
+3. In the UI, simply check the "Include Web Search Results" checkbox when making a query.
+
+The web search results will be integrated into the context provided to the LLM, and will be displayed as additional sources in the UI.
+
+Note: Web search requires an active internet connection and uses the Serper.dev API, which may have usage limits depending on your subscription.
+
 #### Document Chunking
 
 The application supports document chunking for improved retrieval performance. Chunking divides large documents into smaller pieces with some overlap, which helps make embeddings more focused and retrieval more accurate.
@@ -129,6 +167,8 @@ curl -X POST "http://localhost:8000/process?enable_chunking=false"
   - Optional query parameters:
     - `n_results`: Number of results to return (default: 3)
     - `combine_chunks`: Whether to combine chunks from the same document (default: true)
+    - `web_search`: Whether to augment with web search results (default: false)
+    - `web_results_count`: Number of web search results to include (default: 5)
 
 - **GET /health**: Returns detailed health status of all services and components
 
@@ -198,3 +238,28 @@ If GPU acceleration isn't working:
 1. Verify your system has NVIDIA drivers installed
 2. Check that the Docker NVIDIA runtime is installed
 3. Ensure your GPU is compatible with the layers setting (try reducing `--gpu-layers`)
+
+#### Windows WSL2 GPU Support Considerations
+
+If you're using Windows with Docker Desktop and WSL2, there are additional requirements for GPU support:
+
+1. **NVIDIA GPU Driver for WSL**: You need to install the specific NVIDIA driver that supports WSL2 GPU passthrough
+   - Download from [NVIDIA's WSL-compatible driver page](https://developer.nvidia.com/cuda/wsl)
+   - Follow NVIDIA's installation instructions for WSL2 support
+
+2. **WSL2 Configuration**: Ensure your WSL2 distribution is properly configured to access the GPU
+   ```bash
+   # Check if NVIDIA drivers are accessible from within WSL2
+   nvidia-smi
+   ```
+
+3. **Potential Limitations**: Not all GPU features may be available through WSL2
+   - Performance might be lower than on native Linux
+   - Some CUDA features might not work as expected
+   - Newer GPUs typically have better support
+
+4. **Troubleshooting WSL2 GPU Issues**:
+   - Ensure your Windows host has the latest Windows Updates
+   - Update Docker Desktop to the latest version
+   - Make sure WSL2 is set as the default WSL version: `wsl --set-default-version 2`
+   - Check GPU is visible inside WSL2: `wsl --distribution <your-distro> --exec nvidia-smi`
