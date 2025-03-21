@@ -40,6 +40,12 @@ This system makes the following assumptions:
    MODEL=llama2:latest
    EMBEDDING_MODEL=all-minilm:l6-v2
    
+   # Document chunking settings
+   ENABLE_CHUNKING=true
+   MAX_CHUNK_SIZE=1000
+   MIN_CHUNK_SIZE=200
+   CHUNK_OVERLAP=100
+   
    # For GPU support
    OLLAMA_GPU_DEVICES=all
    OLLAMA_GPU_COUNT=1
@@ -67,108 +73,6 @@ This system makes the following assumptions:
 - **API Documentation**: http://localhost:8000/docs
 - **ChromaDB**: http://localhost:8001 (direct database access)
 - **Ollama**: http://localhost:11434 (LLM server)
-
-### Configuration Options
-
-#### GPU Support
-
-To enable GPU support for Ollama, set the following environment variables before running docker-compose:
-
-```bash
-# Enable GPU support
-export OLLAMA_GPU_DEVICES=0        # GPU devices to use (e.g., "0" or "0,1")
-export OLLAMA_GPU_LAYERS=35        # Number of layers to offload to GPU (higher = more GPU utilization)
-export OLLAMA_GPU_COUNT=1          # Number of GPUs to use
-export OLLAMA_GPU_MODE="shared"    # GPU mode ("shared" or "exclusive")
-
-# Then run docker-compose
-docker-compose up -d
-```
-
-The GPU settings will be ignored if you don't set these variables, allowing the application to run on CPU only.
-
-#### Models
-
-The application uses two different models:
-- `MODEL` (default: llama2) - Used for generating responses to queries
-- `EMBEDDING_MODEL` (default: all-minilm:l6-v2) - Specialized model for generating embeddings
-
-You can override these defaults by setting environment variables:
-
-```bash
-# Use specific models
-export MODEL=mistral               # For generating responses
-export EMBEDDING_MODEL=nomic-embed-text  # For generating embeddings
-
-# Then run docker-compose
-docker-compose up -d
-```
-
-#### Web Search API Integration
-
-To enable the web search feature with Serper.dev API:
-
-```bash
-# Set the Serper API key
-export SERPER_API_KEY=your_serper_api_key_here
-
-# Then run docker-compose
-docker-compose up -d
-```
-
-#### Web Search Integration
-
-The application includes an optional web search feature that can augment the RAG results with information from the internet. This is particularly useful for queries that may require up-to-date information not available in your local document collection.
-
-To use the web search feature:
-
-1. Set the Serper API key as an environment variable:
-
-```bash
-# Add to your .env file or set directly
-export SERPER_API_KEY=your_serper_api_key_here
-```
-
-2. Enable web search in your queries:
-
-```bash
-# Enable web search with 5 results
-curl -X GET "http://localhost:8000/query?query=Your%20question&web_search=true&web_results_count=5"
-```
-
-3. In the UI, simply check the "Include Web Search Results" checkbox when making a query.
-
-The web search results will be integrated into the context provided to the LLM, and will be displayed as additional sources in the UI.
-
-Note: Web search requires an active internet connection and uses the Serper.dev API, which may have usage limits depending on your subscription.
-
-#### Document Chunking
-
-The application supports document chunking for improved retrieval performance. Chunking divides large documents into smaller pieces with some overlap, which helps make embeddings more focused and retrieval more accurate.
-
-You can configure chunking with the following environment variables:
-
-```bash
-# Set chunking parameters
-export ENABLE_CHUNKING=true     # Enable/disable chunking (default: true)
-export MAX_CHUNK_SIZE=1000      # Maximum characters per chunk (default: 1000)
-export MIN_CHUNK_SIZE=200       # Minimum size for a chunk (default: 200)
-export CHUNK_OVERLAP=100        # Overlap between chunks (default: 100)
-
-# Then run docker-compose
-docker-compose up -d
-```
-
-You can also override chunking settings when processing documents through the API:
-
-```bash
-# Override chunking settings for a specific processing run
-curl -X POST "http://localhost:8000/process?chunk_size=1500&min_size=300&overlap=150"
-
-# Disable chunking for a specific run
-curl -X POST "http://localhost:8000/process?enable_chunking=false"
-```
-
 ### API Endpoints
 
 - **POST /process**: Processes all documents in the `rag-documents` directory and stores their embeddings in ChromaDB
