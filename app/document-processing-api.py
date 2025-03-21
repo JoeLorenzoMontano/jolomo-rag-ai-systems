@@ -11,6 +11,7 @@ import time as import_time
 from utils.ollama_client import OllamaClient
 from utils.web_search import WebSearchClient
 from utils.document_processor import DocumentProcessor
+from utils.query_classifier import QueryClassifier
 
 # ===============================================================
 # Environment Variables and Configuration
@@ -138,6 +139,9 @@ doc_processor = DocumentProcessor(
     chunk_overlap=CHUNK_OVERLAP,
     enable_chunking=ENABLE_CHUNKING
 )
+
+# Initialize Query Classifier for determining when to use web search
+query_classifier = QueryClassifier(confidence_threshold=0.6)
 
 # ===============================================================
 # API Endpoints
@@ -407,8 +411,9 @@ async def query_documents(
     query: str,
     n_results: int = Query(3, description="Number of results to return"),
     combine_chunks: bool = Query(True, description="Whether to combine chunks from the same document"),
-    web_search: bool = Query(False, description="Whether to augment with web search results"),
-    web_results_count: int = Query(5, description="Number of web search results to include")
+    web_search: bool = Query(None, description="Whether to augment with web search results (auto if None)"),
+    web_results_count: int = Query(5, description="Number of web search results to include"),
+    explain_classification: bool = Query(False, description="Whether to include query classification explanation")
 ):
     try:
         # Check if ChromaDB has any documents at all
@@ -541,9 +546,32 @@ async def query_documents(
         if len(context.split()) < 100 and len(docs) > 1:
             context = docs[0] + "\n\n" + docs[1]
         
-        # Add web search results if enabled
+        # Classify the query to determine if we should use web search
+        source_type = "documents"
+        confidence = 1.0
+        classification_metadata = {}
+        
+        if web_search is None:  # Auto-classify if not explicitly set
+            # Extract document scores for better classification
+            doc_distance_scores = distances if 'distances' in locals() else []
+            # Convert distances to similarity scores (lower distance = higher similarity)
+            doc_scores = [1.0 - min(d, 1.0) for d in doc_distance_scores] if doc_distance_scores else []
+            
+            # Classify the query
+            source_type, confidence, classification_metadata = query_classifier.classify(
+                query=query, 
+                doc_scores=doc_scores
+            )
+            print(f"Query classified as '{source_type}' with {confidence:.2f} confidence")
+        
+        # Decide whether to use web search based on classification or explicit setting
+        should_use_web = web_search if web_search is not None else (
+            source_type == "web" or source_type == "hybrid"
+        )
+        
+        # Add web search results if enabled/auto-determined
         web_results = []
-        if web_search and SERPER_API_KEY:
+        if should_use_web and SERPER_API_KEY:
             try:
                 print(f"Performing web search for query: {query}")
                 web_results = web_search_client.search_with_serper(query, num_results=web_results_count)
@@ -569,13 +597,27 @@ async def query_documents(
             "web_results": web_results if web_search and web_results else []
         }
         
-        return {
+        # Prepare response
+        response_data = {
             "query": query, 
             "response": response, 
             "sources": cleaned_results,
             "status": "success",
-            "web_search_used": web_search and len(web_results) > 0
+            "web_search_used": should_use_web and len(web_results) > 0,
+            "source_type": source_type
         }
+        
+        # Include classification details if requested
+        if explain_classification and web_search is None:
+            response_data["classification"] = {
+                "source_type": source_type,
+                "confidence": confidence,
+                "explanations": classification_metadata.get("explanations", []),
+                "matched_terms": classification_metadata.get("matched_terms", []),
+                "scores": classification_metadata.get("scores", {})
+            }
+            
+        return response_data
     except Exception as e:
         print(f"Error in query_documents: {e}")
         

@@ -43,12 +43,17 @@
                                 <label class="form-check-label" for="combine-chunks">Combine Chunks from Same Document</label>
                             </div>
                             
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="web-search">
-                                <label class="form-check-label" for="web-search">Include Web Search Results</label>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="web-search" value="auto" checked>
+                                <label class="form-check-label" for="web-search">Auto-classify Query Source</label>
                             </div>
                             
-                            <div id="web-search-options" class="mt-2 d-none">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="show-classification">
+                                <label class="form-check-label" for="show-classification">Show Classification Details</label>
+                            </div>
+                            
+                            <div id="web-search-options" class="mt-2">
                                 <label for="web-results-count" class="form-label">Number of Web Results</label>
                                 <input type="number" class="form-control" id="web-results-count" value="5" min="1" max="10">
                                 <div class="form-text">Number of web search results to include</div>
@@ -56,11 +61,26 @@
                         </div>
                     </div>
                     
+                    <div class="alert alert-info mt-2" id="web-search-info">
+                        <i class="bi bi-info-circle-fill me-2"></i> 
+                        When "Auto-classify" is enabled, the system will intelligently determine 
+                        whether to use the document database, web search, or both based on your query content.
+                    </div>
+                    
                     <button type="submit" class="btn btn-primary" id="query-button">
                         <span id="query-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         Submit Query
                     </button>
                 </form>
+            </div>
+        </div>
+        
+        <div class="card mb-4 d-none" id="classification-card">
+            <div class="card-header bg-secondary text-white">
+                Query Classification
+            </div>
+            <div class="card-body">
+                <div id="classification-content"></div>
             </div>
         </div>
         
@@ -96,13 +116,19 @@
             const sourcesContent = document.getElementById('sources-content');
             const webSearchCheckbox = document.getElementById('web-search');
             const webSearchOptions = document.getElementById('web-search-options');
+            const showClassificationCheckbox = document.getElementById('show-classification');
+            const classificationCard = document.getElementById('classification-card');
+            const classificationContent = document.getElementById('classification-content');
             
             // Toggle web search options visibility
             webSearchCheckbox.addEventListener('change', () => {
-                if (webSearchCheckbox.checked) {
-                    webSearchOptions.classList.remove('d-none');
+                if (!webSearchCheckbox.checked) {
+                    // When auto-classify is off, hide classification options
+                    showClassificationCheckbox.checked = false;
+                    showClassificationCheckbox.disabled = true;
                 } else {
-                    webSearchOptions.classList.add('d-none');
+                    // When auto-classify is on, enable classification options
+                    showClassificationCheckbox.disabled = false;
                 }
             });
             
@@ -115,13 +141,15 @@
                 queryButton.disabled = true;
                 responseCard.classList.add('d-none');
                 sourcesCard.classList.add('d-none');
+                classificationCard.classList.add('d-none');
                 
                 // Get form values
                 const queryText = document.getElementById('query-text').value.trim();
                 const nResults = document.getElementById('n-results').value;
                 const combineChunks = document.getElementById('combine-chunks').checked;
-                const webSearch = document.getElementById('web-search').checked;
+                const webSearch = webSearchCheckbox.checked ? null : false; // null means auto-classify
                 const webResultsCount = document.getElementById('web-results-count').value;
+                const explainClassification = showClassificationCheckbox.checked;
                 
                 if (!queryText) {
                     alert('Please enter a question');
@@ -159,7 +187,8 @@
                             n_results: nResults,
                             combine_chunks: combineChunks,
                             web_search: webSearch,
-                            web_results_count: webResultsCount
+                            web_results_count: webResultsCount,
+                            explain_classification: explainClassification
                         }),
                         signal: controller.signal
                     });
@@ -179,6 +208,66 @@
                     } else {
                         // Convert markdown to HTML
                         responseContent.innerHTML = marked.parse(data.response || 'No response generated');
+                        
+                        // Display classification details if requested and available
+                        if (data.classification && explainClassification) {
+                            classificationCard.classList.remove('d-none');
+                            
+                            const sourceType = data.classification.source_type;
+                            const confidence = data.classification.confidence;
+                            const explanations = data.classification.explanations || [];
+                            const matchedTerms = data.classification.matched_terms || [];
+                            const scores = data.classification.scores || {};
+                            
+                            let sourceTypeBadge = '';
+                            if (sourceType === 'documents') {
+                                sourceTypeBadge = '<span class="badge bg-info">Documents</span>';
+                            } else if (sourceType === 'web') {
+                                sourceTypeBadge = '<span class="badge bg-warning">Web Search</span>';
+                            } else {
+                                sourceTypeBadge = '<span class="badge bg-secondary">Hybrid</span>';
+                            }
+                            
+                            let classHtml = `
+                                <div class="mb-3">
+                                    <h5>Classification Result: ${sourceTypeBadge}</h5>
+                                    <div class="progress mt-2">
+                                        <div class="progress-bar bg-info" role="progressbar" style="width: ${scores.documents * 100}%" 
+                                            aria-valuenow="${scores.documents * 100}" aria-valuemin="0" aria-valuemax="100">
+                                            Documents: ${(scores.documents * 100).toFixed(0)}%
+                                        </div>
+                                        <div class="progress-bar bg-warning" role="progressbar" style="width: ${scores.web * 100}%" 
+                                            aria-valuenow="${scores.web * 100}" aria-valuemin="0" aria-valuemax="100">
+                                            Web: ${(scores.web * 100).toFixed(0)}%
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            if (matchedTerms && matchedTerms.length > 0) {
+                                classHtml += `
+                                    <div class="mb-3">
+                                        <h6>DuploCloud Terms Detected:</h6>
+                                        <div>
+                                            ${matchedTerms.map(term => `<span class="badge bg-secondary me-1">${term}</span>`).join('')}
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                            
+                            if (explanations && explanations.length > 0) {
+                                classHtml += `
+                                    <div>
+                                        <h6>Explanation:</h6>
+                                        <ul>
+                                            ${explanations.map(exp => `<li>${exp}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                `;
+                            }
+                            
+                            classificationContent.innerHTML = classHtml;
+                        }
                         
                         // Display sources if available
                         if (data.sources && data.sources.documents && data.sources.documents.length > 0) {

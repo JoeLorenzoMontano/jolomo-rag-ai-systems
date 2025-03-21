@@ -82,8 +82,9 @@ def query_documents():
     query_text = data.get('query', '')
     n_results = data.get('n_results', 3)
     combine_chunks = data.get('combine_chunks', True)
-    web_search = data.get('web_search', False)
+    web_search = data.get('web_search', None)  # None means auto-classify
     web_results_count = data.get('web_results_count', 5)
+    explain_classification = data.get('explain_classification', False)
     
     if not query_text:
         return jsonify({"status": "error", "message": "Query text is required"})
@@ -97,7 +98,8 @@ def query_documents():
                 'n_results': n_results,
                 'combine_chunks': combine_chunks,
                 'web_search': web_search,
-                'web_results_count': web_results_count
+                'web_results_count': web_results_count,
+                'explain_classification': explain_classification
             },
             timeout=None
         )
