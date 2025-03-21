@@ -120,38 +120,11 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 
 ## Working with Documents
 
-### Document Requirements
-
 - Documents must be in Markdown (.md) format
-- Place all documents in the `rag-documents` directory or its subdirectories 
+- Place all documents in the `rag-documents` directory or its subdirectories
 - Documents will be recursively processed from all subdirectories
 - File paths become document identifiers in the system
-
-### Adding or Updating Documents
-
-1. Add your markdown files to the `rag-documents` directory
-2. Run the processing endpoint to index them:
-   ```bash
-   curl -X POST http://localhost:8000/process
-   ```
-   Or use the Process Documents page in the web UI
-
-3. Verify documents were processed through the health endpoint:
-   ```bash
-   curl http://localhost:8000/health
-   ```
-   Check the `collection.document_count` field
-
-### Document Chunking Strategy
-
-The system splits documents into chunks using this strategy:
-
-1. First splits by paragraph boundaries (double newlines)
-2. For large paragraphs, further splits by sentence boundaries
-3. Maintains overlap between chunks to preserve context
-4. Respects minimum chunk size to avoid tiny fragments
-
-This approach balances semantic coherence with vector retrieval efficiency.
+- Process documents using the web UI or API endpoint
 
 ## Limitations
 
