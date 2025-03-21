@@ -36,6 +36,10 @@ This system makes the following assumptions:
 2. Navigate to the project directory
 3. (Optional) Create a `.env` file for configuration:
    ```
+   # Ollama Settings
+   MODEL=llama2:latest
+   EMBEDDING_MODEL=all-minilm:l6-v2
+   
    # For GPU support
    OLLAMA_GPU_DEVICES=all
    OLLAMA_GPU_COUNT=1
