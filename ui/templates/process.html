@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Documents</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container mt-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Process Documents</li>
+            </ol>
+        </nav>
+        
+        <h1 class="mb-4">Process Documents</h1>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                Processing Configuration
+            </div>
+            <div class="card-body">
+                <form id="process-form">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="enable-chunking" checked>
+                        <label class="form-check-label" for="enable-chunking">Enable Document Chunking</label>
+                    </div>
+                    
+                    <div id="chunking-settings">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="chunk-size" class="form-label">Maximum Chunk Size (characters)</label>
+                                <input type="number" class="form-control" id="chunk-size" value="1000" min="100">
+                                <div class="form-text">Maximum size of each document chunk</div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <label for="min-size" class="form-label">Minimum Chunk Size (characters)</label>
+                                <input type="number" class="form-control" id="min-size" value="200" min="50">
+                                <div class="form-text">Minimum size before creating a new chunk</div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <label for="overlap" class="form-label">Chunk Overlap (characters)</label>
+                                <input type="number" class="form-control" id="overlap" value="100" min="0">
+                                <div class="form-text">Overlap between adjacent chunks</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="process-button">
+                        <span id="process-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        Process Documents
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mb-4 d-none" id="result-card">
+            <div class="card-header bg-success text-white">
+                Processing Results
+            </div>
+            <div class="card-body" id="result-content">
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const enableChunkingSwitch = document.getElementById('enable-chunking');
+            const chunkingSettings = document.getElementById('chunking-settings');
+            const processForm = document.getElementById('process-form');
+            const processButton = document.getElementById('process-button');
+            const processSpinner = document.getElementById('process-spinner');
+            const resultCard = document.getElementById('result-card');
+            const resultContent = document.getElementById('result-content');
+            
+            // Toggle chunking settings visibility
+            enableChunkingSwitch.addEventListener('change', () => {
+                if (enableChunkingSwitch.checked) {
+                    chunkingSettings.classList.remove('d-none');
+                } else {
+                    chunkingSettings.classList.add('d-none');
+                }
+            });
+            
+            // Process form submission
+            processForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                // Show spinner and disable button
+                processSpinner.classList.remove('d-none');
+                processButton.disabled = true;
+                resultCard.classList.add('d-none');
+                
+                // Get form values
+                const enableChunking = enableChunkingSwitch.checked;
+                const chunkSize = document.getElementById('chunk-size').value;
+                const minSize = document.getElementById('min-size').value;
+                const overlap = document.getElementById('overlap').value;
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('enable_chunking', enableChunking);
+                formData.append('chunk_size', chunkSize);
+                formData.append('min_size', minSize);
+                formData.append('overlap', overlap);
+                
+                try {
+                    // Send request to process documents
+                    const response = await fetch('/process-documents', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    // Display results
+                    resultCard.classList.remove('d-none');
+                    
+                    if (data.status === 'error') {
+                        resultContent.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                    } else {
+                        let resultHtml = '';
+                        
+                        if (data.message) {
+                            const alertClass = data.failed_chunks ? 'alert-warning' : 'alert-success';
+                            resultHtml += `<div class="alert ${alertClass}">${data.message}</div>`;
+                        }
+                        
+                        resultHtml += '<div class="row mt-3">';
+                        resultHtml += `<div class="col-md-3"><strong>Source Files:</strong> ${data.source_files || 0}</div>`;
+                        resultHtml += `<div class="col-md-3"><strong>Total Chunks:</strong> ${data.total_chunks || 0}</div>`;
+                        resultHtml += `<div class="col-md-3"><strong>Successful:</strong> ${data.successful_chunks || 0}</div>`;
+                        resultHtml += `<div class="col-md-3"><strong>Failed:</strong> ${data.failed_chunks || 0}</div>`;
+                        resultHtml += '</div>';
+                        
+                        if (data.failed_chunks > 0 && data.failed_items) {
+                            resultHtml += '<div class="mt-3">';
+                            resultHtml += '<h5>Failed Items:</h5>';
+                            resultHtml += '<ul class="small text-danger">';
+                            data.failed_items.forEach(item => {
+                                resultHtml += `<li>${item}</li>`;
+                            });
+                            resultHtml += '</ul>';
+                            resultHtml += '</div>';
+                        }
+                        
+                        resultContent.innerHTML = resultHtml;
+                    }
+                } catch (error) {
+                    resultCard.classList.remove('d-none');
+                    resultContent.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                } finally {
+                    // Hide spinner and enable button
+                    processSpinner.classList.add('d-none');
+                    processButton.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>

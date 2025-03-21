@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Query Documents</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container mt-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Query Documents</li>
+            </ol>
+        </nav>
+        
+        <h1 class="mb-4">Query Documents</h1>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                Ask a Question
+            </div>
+            <div class="card-body">
+                <form id="query-form">
+                    <div class="mb-3">
+                        <label for="query-text" class="form-label">Your Question</label>
+                        <textarea class="form-control" id="query-text" rows="3" required placeholder="Ask a question about the documents..."></textarea>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="n-results" class="form-label">Number of Results</label>
+                            <input type="number" class="form-control" id="n-results" value="3" min="1" max="10">
+                            <div class="form-text">Number of document chunks to retrieve</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox" id="combine-chunks" checked>
+                                <label class="form-check-label" for="combine-chunks">Combine Chunks from Same Document</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="query-button">
+                        <span id="query-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        Submit Query
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mb-4 d-none" id="response-card">
+            <div class="card-header bg-success text-white">
+                Response
+            </div>
+            <div class="card-body">
+                <div id="response-content"></div>
+            </div>
+        </div>
+        
+        <div class="card mb-4 d-none" id="sources-card">
+            <div class="card-header bg-info text-white">
+                Sources
+            </div>
+            <div class="card-body">
+                <div id="sources-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const queryForm = document.getElementById('query-form');
+            const queryButton = document.getElementById('query-button');
+            const querySpinner = document.getElementById('query-spinner');
+            const responseCard = document.getElementById('response-card');
+            const responseContent = document.getElementById('response-content');
+            const sourcesCard = document.getElementById('sources-card');
+            const sourcesContent = document.getElementById('sources-content');
+            
+            // Process form submission
+            queryForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                // Show spinner and disable button
+                querySpinner.classList.remove('d-none');
+                queryButton.disabled = true;
+                responseCard.classList.add('d-none');
+                sourcesCard.classList.add('d-none');
+                
+                // Get form values
+                const queryText = document.getElementById('query-text').value.trim();
+                const nResults = document.getElementById('n-results').value;
+                const combineChunks = document.getElementById('combine-chunks').checked;
+                
+                if (!queryText) {
+                    alert('Please enter a question');
+                    querySpinner.classList.add('d-none');
+                    queryButton.disabled = false;
+                    return;
+                }
+                
+                try {
+                    // Send request to query documents
+                    const response = await fetch('/query-documents', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: queryText,
+                            n_results: nResults,
+                            combine_chunks: combineChunks
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    // Display response
+                    responseCard.classList.remove('d-none');
+                    
+                    if (data.status === 'error') {
+                        responseContent.innerHTML = `<div class="alert alert-danger">${data.message || 'An error occurred'}</div>`;
+                    } else if (data.status === 'not_found') {
+                        responseContent.innerHTML = `<div class="alert alert-warning">${data.response || 'No relevant documents found'}</div>`;
+                    } else {
+                        // Convert markdown to HTML
+                        responseContent.innerHTML = marked.parse(data.response || 'No response generated');
+                        
+                        // Display sources if available
+                        if (data.sources && data.sources.documents && data.sources.documents.length > 0) {
+                            sourcesCard.classList.remove('d-none');
+                            
+                            let sourcesHtml = '<div class="accordion" id="sourcesAccordion">';
+                            
+                            data.sources.documents.forEach((doc, index) => {
+                                const metadata = data.sources.metadatas[index] || {};
+                                const distance = data.sources.distances ? data.sources.distances[index] : null;
+                                const sourceId = data.sources.ids[index] || `source-${index}`;
+                                
+                                sourcesHtml += `
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="heading${index}">
+                                            <button class="accordion-button ${index > 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${index}" aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="collapse${index}">
+                                                <strong>${metadata.filename || sourceId}</strong>
+                                                ${distance !== null ? ` <span class="ms-2 badge bg-secondary">Similarity: ${(1 - distance).toFixed(3)}</span>` : ''}
+                                            </button>
+                                        </h2>
+                                        <div id="collapse${index}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" aria-labelledby="heading${index}" data-bs-parent="#sourcesAccordion">
+                                            <div class="accordion-body">
+                                                <pre class="source-text">${doc}</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            
+                            sourcesHtml += '</div>';
+                            sourcesContent.innerHTML = sourcesHtml;
+                        }
+                    }
+                } catch (error) {
+                    responseCard.classList.remove('d-none');
+                    responseContent.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                } finally {
+                    // Hide spinner and enable button
+                    querySpinner.classList.add('d-none');
+                    queryButton.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>

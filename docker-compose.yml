@@ -1,5 +1,5 @@
 services:
-  fastapi-app:
+  api:
     build: ./app
     container_name: document-processing-service
     restart: always
@@ -21,6 +21,19 @@ services:
       - MAX_CHUNK_SIZE=1000
       - MIN_CHUNK_SIZE=200
       - CHUNK_OVERLAP=100
+    networks:
+      - app-network
+      
+  ui:
+    build: ./ui
+    container_name: document-ui-service
+    restart: always
+    ports:
+      - "5000:5000"
+    depends_on:
+      - api
+    environment:
+      - API_URL=http://api:8000
     networks:
       - app-network
 
