@@ -3,6 +3,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Tuple, Optional
 import chromadb
+from chromadb.config import Settings
 import os
 import re
 import requests
@@ -10,8 +11,40 @@ import time as import_time
 from utils.ollama_client import OllamaClient
 from utils.web_search import WebSearchClient
 
+# ===============================================================
+# Environment Variables and Configuration
+# ===============================================================
+
+# ChromaDB connection settings
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
+
+# Chunking configuration from environment variables with defaults
+MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "1000"))
+MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "200"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
+ENABLE_CHUNKING = os.getenv("ENABLE_CHUNKING", "true").lower() == "true"
+
+# Web search API key
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+
+# Folder to store raw documents
+DOCS_FOLDER = "./data"
+
+# Connection retry settings
+MAX_RETRIES = 5
+RETRY_DELAY = 3  # seconds
+
+# ===============================================================
+# FastAPI Initialization
+# ===============================================================
+
 # Initialize FastAPI app
-app = FastAPI(title="Document Processing API", description="API for storing and retrieving documents with embeddings.", version="1.0")
+app = FastAPI(
+    title="Document Processing API", 
+    description="API for storing and retrieving documents with embeddings.", 
+    version="1.0"
+)
 
 # Enable CORS
 app.add_middleware(
@@ -22,28 +55,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ===============================================================
+# Service Initialization
+# ===============================================================
 
-# Initialize ChromaDB client
-CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
-CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
+# Initialize directory for documents
+os.makedirs(DOCS_FOLDER, exist_ok=True)
 
-# Connect to ChromaDB with simple connection and retry logic
-max_retries = 5
-retry_delay = 3  # seconds
+# Log configuration
+print(f"Document chunking settings:")
+print(f"  ENABLE_CHUNKING: {ENABLE_CHUNKING}")
+print(f"  MAX_CHUNK_SIZE: {MAX_CHUNK_SIZE} chars")
+print(f"  MIN_CHUNK_SIZE: {MIN_CHUNK_SIZE} chars")
+print(f"  CHUNK_OVERLAP: {CHUNK_OVERLAP} chars")
 
+# Initialize ChromaDB connection
 print(f"Connecting to ChromaDB at http://{CHROMA_HOST}:{CHROMA_PORT}")
 
-# Create connection settings 
-from chromadb.config import Settings
-
-settings = Settings(
+# Create ChromaDB connection settings
+chroma_settings = Settings(
     chroma_api_impl="rest",
     chroma_server_host=CHROMA_HOST,
     chroma_server_http_port=CHROMA_PORT,
 )
 
 # Try connection with retry logic
-for attempt in range(max_retries):
+chroma_client = None
+for attempt in range(MAX_RETRIES):
     try:
         print(f"Connection attempt {attempt + 1} to ChromaDB...")
         chroma_client = chromadb.HttpClient(
@@ -65,10 +103,10 @@ for attempt in range(max_retries):
         break
     except Exception as e:
         print(f"Connection attempt {attempt + 1} failed: {str(e)}")
-        if attempt < max_retries - 1:
-            print(f"Retrying in {retry_delay} seconds...")
+        if attempt < MAX_RETRIES - 1:
+            print(f"Retrying in {RETRY_DELAY} seconds...")
             import time
-            time.sleep(retry_delay)
+            time.sleep(RETRY_DELAY)
         else:
             print("All connection attempts failed. Falling back to in-memory database.")
             print("WARNING: Data will not be persisted between restarts!")
@@ -89,104 +127,12 @@ except Exception as e:
 # Initialize Ollama Client
 ollama_client = OllamaClient()
 
-# Initialize Web Search Client with Serper API key from environment
-SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+# Initialize Web Search Client
 web_search_client = WebSearchClient(serper_api_key=SERPER_API_KEY)
 
-# Health check endpoints
-@app.get("/", summary="Root endpoint", description="Returns a simple message indicating the API is running.")
-async def root():
-    return {"message": "Document Processing API is running"}
-
-@app.get("/health", summary="Health check", description="Checks if all components are operational.")
-async def health_check():
-    health_status = {
-        "api": "healthy",
-        "chroma": "unknown",
-        "ollama": "unknown",
-        "models": {
-            "response_model": "unknown",
-            "embedding_model": "unknown"
-        },
-        "collection": {
-            "status": "unknown",
-            "document_count": 0
-        }
-    }
-    
-    # Check ChromaDB
-    try:
-        chroma_client.heartbeat()
-        health_status["chroma"] = "healthy"
-        
-        # Check collection status
-        try:
-            doc_count = db_collection.count()
-            health_status["collection"]["status"] = "healthy"
-            health_status["collection"]["document_count"] = doc_count
-        except Exception as e:
-            health_status["collection"]["status"] = f"error: {str(e)}"
-    except Exception as e:
-        health_status["chroma"] = f"unhealthy: {str(e)}"
-    
-    # Check Ollama
-    try:
-        response = requests.get(f"{ollama_client.base_url}/api/tags", timeout=2)
-        if response.status_code == 200:
-            health_status["ollama"] = "healthy"
-            
-            # Check available models
-            model_data = response.json()
-            available_models = []
-            
-            # Handle different response formats
-            if "models" in model_data:
-                available_models = [m["name"] for m in model_data["models"]]
-            elif isinstance(model_data, list):
-                available_models = [m["name"] for m in model_data]
-                
-            # Check if our models are available
-            response_model = ollama_client.model
-            embedding_model = ollama_client.embedding_model
-            
-            if response_model in available_models:
-                health_status["models"]["response_model"] = f"available ({response_model})"
-            else:
-                health_status["models"]["response_model"] = f"not found (looking for {response_model})"
-                
-            if embedding_model in available_models:
-                health_status["models"]["embedding_model"] = f"available ({embedding_model})"
-            else:
-                health_status["models"]["embedding_model"] = f"not found (looking for {embedding_model})"
-        else:
-            health_status["ollama"] = f"unhealthy: status code {response.status_code}"
-    except Exception as e:
-        health_status["ollama"] = f"unhealthy: {str(e)}"
-    
-    # Test embedding functionality
-    if health_status["ollama"] == "healthy":
-        try:
-            # Quick test of embedding generation with a simple string
-            embedding = ollama_client.generate_embedding("test health check")
-            if embedding and len(embedding) > 0:
-                health_status["models"]["embedding_model"] += f" - working (dimension: {len(embedding)})"
-        except Exception as e:
-            health_status["models"]["embedding_model"] += f" - error: {str(e)}"
-    
-    return health_status
-
-# Chunking configuration from environment variables with defaults
-MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "1000"))  # Maximum number of characters per chunk
-MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "200"))   # Minimum size of a chunk
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))     # Overlap between chunks to maintain context
-ENABLE_CHUNKING = os.getenv("ENABLE_CHUNKING", "true").lower() == "true"  # Enable/disable chunking
-
-# Print chunking settings
-print(f"Document chunking settings:")
-print(f"  ENABLE_CHUNKING: {ENABLE_CHUNKING}")
-print(f"  MAX_CHUNK_SIZE: {MAX_CHUNK_SIZE} chars")
-print(f"  MIN_CHUNK_SIZE: {MIN_CHUNK_SIZE} chars")
-print(f"  CHUNK_OVERLAP: {CHUNK_OVERLAP} chars")
+# ===============================================================
+# Utility Functions
+# ===============================================================
 
 def chunk_document(document: str, file_path: str) -> List[Tuple[str, str]]:
     """
@@ -315,9 +261,90 @@ def chunk_document(document: str, file_path: str) -> List[Tuple[str, str]]:
     print(f"Split document '{file_path}' into {len(chunks)} chunks")
     return chunks
 
-# Folder to store raw documents
-DOCS_FOLDER = "./data"
-os.makedirs(DOCS_FOLDER, exist_ok=True)
+# ===============================================================
+# API Endpoints
+# ===============================================================
+
+@app.get("/", summary="Root endpoint", description="Returns a simple message indicating the API is running.")
+async def root():
+    return {"message": "Document Processing API is running"}
+
+@app.get("/health", summary="Health check", description="Checks if all components are operational.")
+async def health_check():
+    health_status = {
+        "api": "healthy",
+        "chroma": "unknown",
+        "ollama": "unknown",
+        "models": {
+            "response_model": "unknown",
+            "embedding_model": "unknown"
+        },
+        "collection": {
+            "status": "unknown",
+            "document_count": 0
+        }
+    }
+    
+    # Check ChromaDB
+    try:
+        chroma_client.heartbeat()
+        health_status["chroma"] = "healthy"
+        
+        # Check collection status
+        try:
+            doc_count = db_collection.count()
+            health_status["collection"]["status"] = "healthy"
+            health_status["collection"]["document_count"] = doc_count
+        except Exception as e:
+            health_status["collection"]["status"] = f"error: {str(e)}"
+    except Exception as e:
+        health_status["chroma"] = f"unhealthy: {str(e)}"
+    
+    # Check Ollama
+    try:
+        response = requests.get(f"{ollama_client.base_url}/api/tags", timeout=2)
+        if response.status_code == 200:
+            health_status["ollama"] = "healthy"
+            
+            # Check available models
+            model_data = response.json()
+            available_models = []
+            
+            # Handle different response formats
+            if "models" in model_data:
+                available_models = [m["name"] for m in model_data["models"]]
+            elif isinstance(model_data, list):
+                available_models = [m["name"] for m in model_data]
+                
+            # Check if our models are available
+            response_model = ollama_client.model
+            embedding_model = ollama_client.embedding_model
+            
+            if response_model in available_models:
+                health_status["models"]["response_model"] = f"available ({response_model})"
+            else:
+                health_status["models"]["response_model"] = f"not found (looking for {response_model})"
+                
+            if embedding_model in available_models:
+                health_status["models"]["embedding_model"] = f"available ({embedding_model})"
+            else:
+                health_status["models"]["embedding_model"] = f"not found (looking for {embedding_model})"
+        else:
+            health_status["ollama"] = f"unhealthy: status code {response.status_code}"
+    except Exception as e:
+        health_status["ollama"] = f"unhealthy: {str(e)}"
+    
+    # Test embedding functionality
+    if health_status["ollama"] == "healthy":
+        try:
+            # Quick test of embedding generation with a simple string
+            embedding = ollama_client.generate_embedding("test health check")
+            if embedding and len(embedding) > 0:
+                health_status["models"]["embedding_model"] += f" - working (dimension: {len(embedding)})"
+        except Exception as e:
+            health_status["models"]["embedding_model"] += f" - error: {str(e)}"
+    
+    return health_status
 
 @app.post("/process", summary="Process and store document embeddings", description="Processes documents and stores their embeddings in ChromaDB.")
 async def process_documents(
@@ -819,6 +846,10 @@ def custom_openapi():
         description="API for processing and retrieving documents using embeddings.",
         routes=app.routes,
     )
+
+# ===============================================================
+# Main Entry Point
+# ===============================================================
 
 if __name__ == "__main__":
     import uvicorn
