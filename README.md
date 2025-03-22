@@ -34,12 +34,6 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
    MODEL=llama2:latest
    EMBEDDING_MODEL=all-minilm:l6-v2
    
-   # Document chunking settings
-   ENABLE_CHUNKING=true
-   MAX_CHUNK_SIZE=1000
-   MIN_CHUNK_SIZE=200
-   CHUNK_OVERLAP=100
-   
    # For GPU support
    OLLAMA_GPU_DEVICES=all
    OLLAMA_GPU_COUNT=1
