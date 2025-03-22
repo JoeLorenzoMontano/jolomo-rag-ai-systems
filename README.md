@@ -1,6 +1,6 @@
 # Document Processing API with Web UI
 
-> **⚠️ IMPORTANT FOR REVIEWERS**: Running Ollama in a container with CPU-only will be noticeably slow. For better performance, install Ollama directly on your host machine and use `docker-compose -f docker-compose.docker.ollama.yml up -d` instead of the default docker-compose file. Host machine installation typically provides easier GPU access and significantly faster response times. See the ["Using Host Machine's Ollama"](#using-host-machines-ollama) section for details.
+> **⚠️ IMPORTANT FOR REVIEWERS**: Running Ollama in a container with CPU-only will be noticeably slow. For better performance, install Ollama directly on your host machine and use the default `docker-compose up -d` command, which is already configured to use your host's Ollama installation. Host machine installation typically provides easier GPU access and significantly faster response times. See the ["Using Host Machine's Ollama"](#using-host-machines-ollama) section for details.
 
 A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB, and generates AI responses based on the most relevant content. The system includes both an API backend and a web-based user interface.
 
@@ -77,14 +77,14 @@ For detailed information about all available API endpoints and their parameters,
 
 ### Using Host Machine's Ollama
 
-If you already have Ollama running on your host machine, you can use it instead of running Ollama in a container by using the dedicated docker-compose file:
+The default `docker-compose.yml` is already configured to use Ollama from your host machine:
 
 1. Make sure Ollama is installed and running on your host machine
 2. Create or edit your `.env` file with your LLM/embedding model settings
-3. Start the services with: 
+3. Start the services with the default command: 
 
 ```bash
-docker-compose -f docker-compose.docker.ollama.yml up -d
+docker-compose up -d
 ```
 
 This setup directs API requests to your host's Ollama installation and doesn't run a containerized Ollama. Benefits include:
@@ -97,6 +97,14 @@ This setup directs API requests to your host's Ollama installation and doesn't r
 
 For macOS/Windows, the host Ollama will be accessed at `host.docker.internal:11434`.
 For Linux, the special `host-gateway` setting enables access to the host machine.
+
+If you want to run Ollama within Docker instead of using the host machine installation, use:
+
+```bash
+docker-compose -f docker-compose.docker.ollama.yml up -d
+```
+
+Note that running Ollama in a container may be significantly slower, especially on CPU-only machines.
 
 ## Project Structure
 
