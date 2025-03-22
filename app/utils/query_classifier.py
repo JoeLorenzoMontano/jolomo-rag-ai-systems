@@ -185,7 +185,7 @@ class QueryClassifier:
         # Check for DuploCloud-specific terminology
         term_score, term_matches = self._keyword_match(query)
         scores["documents"] = term_score
-        explanations.append(f"Term match: {term_score:.2f} (found {len(term_matches)} DuploCloud terms)")
+        explanations.append(f"Term match: {term_score:.2f} (found {len(term_matches)} Domain terms)")
         
         # If document scores are provided, factor them in
         retrieval_score = 0.0
