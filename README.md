@@ -81,13 +81,6 @@ docker-compose -f docker-compose.docker.ollama.yml up -d
 ```
 
 Note that running Ollama in a container may be significantly slower, especially on CPU-only machines.
-
-## Working with Documents
-
-- Place documents in Markdown (.md) format in the `rag-documents` directory
-- Process documents using the Web UI or API endpoint
-- Query your documents through the chat interface or advanced query page
-
 ## Key Features
 
 - **Smart Document Chunking**: Automatically splits documents into semantic chunks for optimal retrieval
