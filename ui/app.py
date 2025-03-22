@@ -97,12 +97,17 @@ def list_jobs():
 
 @app.route('/query', methods=['GET'])
 def query_page():
-    """Render the query page"""
+    """Render the advanced query page"""
     return render_template('query.html')
+
+@app.route('/chat', methods=['GET'])
+def chat_page():
+    """Render the chat page"""
+    return render_template('chat.html')
 
 @app.route('/query-documents', methods=['POST'])
 def query_documents():
-    """Proxy for the document query API endpoint"""
+    """Proxy for the document query API endpoint (advanced version)"""
     data = request.get_json()
     query_text = data.get('query', '')
     n_results = data.get('n_results', 3)
@@ -110,6 +115,7 @@ def query_documents():
     web_search = data.get('web_search', None)  # None means auto-classify
     web_results_count = data.get('web_results_count', 5)
     explain_classification = data.get('explain_classification', False)
+    enhance_query = data.get('enhance_query', True)
     
     if not query_text:
         return jsonify({"status": "error", "message": "Query text is required"})
@@ -125,13 +131,47 @@ def query_documents():
                 'web_search': web_search,
                 'web_results_count': web_results_count,
                 'explain_classification': explain_classification,
-                'enhance_query': True  # Enable query enhancement
+                'enhance_query': enhance_query
             },
             timeout=None
         )
         return jsonify(response.json())
     except Exception as e:
         logging.error(f"Error querying documents: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/chat-query', methods=['POST'])
+def chat_query():
+    """Proxy for the document query API endpoint (simplified for chat)"""
+    data = request.get_json()
+    query_text = data.get('query', '')
+    n_results = data.get('n_results', 3)
+    combine_chunks = data.get('combine_chunks', True)
+    web_search = data.get('web_search', None)  # None means auto-classify
+    web_results_count = data.get('web_results_count', 3)
+    enhance_query = data.get('enhance_query', True)
+    
+    if not query_text:
+        return jsonify({"status": "error", "message": "Query text is required"})
+    
+    try:
+        # Call the API - same endpoint as query-documents but with chat-optimized defaults
+        response = requests.get(
+            f"{API_URL}/query", 
+            params={
+                'query': query_text,
+                'n_results': n_results,
+                'combine_chunks': combine_chunks,
+                'web_search': web_search,
+                'web_results_count': web_results_count,
+                'explain_classification': False,  # Always false for chat
+                'enhance_query': enhance_query
+            },
+            timeout=None
+        )
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error in chat query: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/systeminfo', methods=['GET'])

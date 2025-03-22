@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Interface</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .chat-container {
+            height: calc(100vh - 150px);
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 0.25rem;
+            margin-bottom: 15px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 1rem;
+            max-width: 80%;
+            position: relative;
+        }
+        .user-message {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+            border-bottom-right-radius: 0;
+        }
+        .assistant-message {
+            background-color: #e9ecef;
+            color: #212529;
+            align-self: flex-start;
+            border-bottom-left-radius: 0;
+        }
+        .sources-toggle {
+            font-size: 0.8rem;
+            cursor: pointer;
+            display: block;
+            margin-top: 5px;
+            color: #6c757d;
+        }
+        .sources-list {
+            display: none;
+            margin-top: 5px;
+            padding: 5px;
+            background-color: #f8f9fa;
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+        }
+        .chat-form {
+            display: flex;
+            margin-top: auto;
+        }
+        .chat-input {
+            flex-grow: 1;
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+            resize: none;
+        }
+        .chat-submit {
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+        }
+        .typing-indicator {
+            display: none;
+            margin-left: 15px;
+            margin-bottom: 15px;
+        }
+        .typing-indicator span {
+            height: 10px;
+            width: 10px;
+            margin: 0 1px;
+            background-color: #6c757d;
+            display: inline-block;
+            border-radius: 50%;
+            animation: typing 1s infinite;
+        }
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes typing {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Chat</li>
+            </ol>
+        </nav>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1>Chat</h1>
+            <div class="header-actions">
+                <button id="clear-chat" class="btn btn-outline-secondary btn-sm me-2">
+                    <i class="bi bi-trash"></i> Clear Chat
+                </button>
+                <a href="/query" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-gear"></i> Advanced Query
+                </a>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div id="chat-messages" class="chat-messages">
+                <div class="message assistant-message">
+                    Hello! I'm your RAG-powered assistant. Ask me anything about the documents that have been indexed.
+                </div>
+            </div>
+            
+            <div class="typing-indicator" id="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            
+            <form id="chat-form" class="chat-form">
+                <textarea id="chat-input" class="form-control chat-input" rows="1" placeholder="Type your message here..." required></textarea>
+                <button type="submit" class="btn btn-primary chat-submit">
+                    <i class="bi bi-send"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const chatMessages = document.getElementById('chat-messages');
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            const clearChatButton = document.getElementById('clear-chat');
+            const typingIndicator = document.getElementById('typing-indicator');
+            
+            // Auto-resize textarea as user types
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
+            
+            // Ensure input is focused on page load
+            chatInput.focus();
+            
+            // Clear chat history
+            clearChatButton.addEventListener('click', () => {
+                // Keep only the first welcome message
+                while (chatMessages.children.length > 1) {
+                    chatMessages.removeChild(chatMessages.lastChild);
+                }
+            });
+            
+            // Handle form submission
+            chatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const message = chatInput.value.trim();
+                if (!message) return;
+                
+                // Add user message to chat
+                addMessage(message, 'user');
+                
+                // Clear input and resize
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                
+                // Show typing indicator
+                typingIndicator.style.display = 'block';
+                
+                try {
+                    // Call the API
+                    const response = await fetch('/chat-query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: message,
+                            n_results: 3,
+                            combine_chunks: true,
+                            enhance_query: true,
+                            web_search: null, // Auto-classify
+                            web_results_count: 3,
+                            explain_classification: false
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    // Hide typing indicator
+                    typingIndicator.style.display = 'none';
+                    
+                    if (data.status === 'error') {
+                        addMessage(data.message || 'An error occurred', 'assistant', null, true);
+                    } else if (data.status === 'not_found') {
+                        addMessage(data.response || 'No relevant information found', 'assistant', null, true);
+                    } else {
+                        // Process sources for simplified display
+                        let sources = [];
+                        
+                        // Add document sources
+                        if (data.sources && data.sources.documents && data.sources.documents.length > 0) {
+                            // Extract just the filenames or IDs without content
+                            for (let i = 0; i < data.sources.documents.length; i++) {
+                                const metadata = data.sources.metadatas[i] || {};
+                                const sourceId = data.sources.ids[i] || `source-${i}`;
+                                sources.push({
+                                    title: metadata.filename || sourceId,
+                                    type: 'document'
+                                });
+                            }
+                        }
+                        
+                        // Add web sources
+                        if (data.sources && data.sources.web_results && data.sources.web_results.length > 0) {
+                            data.sources.web_results.forEach(result => {
+                                sources.push({
+                                    title: result.title,
+                                    url: result.url,
+                                    type: 'web'
+                                });
+                            });
+                        }
+                        
+                        // Add message with sources
+                        addMessage(data.response, 'assistant', sources);
+                    }
+                } catch (error) {
+                    // Hide typing indicator
+                    typingIndicator.style.display = 'none';
+                    
+                    // Display error message
+                    addMessage(`Error: ${error.message}`, 'assistant', null, true);
+                }
+            });
+            
+            // Add a message to the chat
+            function addMessage(text, sender, sources = null, isError = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${sender}-message`;
+                
+                // If it's an error message, add error styling
+                if (isError) {
+                    messageDiv.style.backgroundColor = '#dc3545';
+                    messageDiv.style.color = 'white';
+                }
+                
+                // If sender is assistant, use markdown parsing
+                if (sender === 'assistant') {
+                    messageDiv.innerHTML = marked.parse(text);
+                } else {
+                    messageDiv.textContent = text;
+                }
+                
+                // Add sources if available
+                if (sources && sources.length > 0) {
+                    const sourcesToggle = document.createElement('div');
+                    sourcesToggle.className = 'sources-toggle';
+                    sourcesToggle.innerHTML = `<i class="bi bi-info-circle"></i> Show sources (${sources.length})`;
+                    
+                    const sourcesList = document.createElement('div');
+                    sourcesList.className = 'sources-list';
+                    
+                    // Create the sources list
+                    const sourceItems = sources.map(source => {
+                        if (source.type === 'web' && source.url) {
+                            return `<li><a href="${source.url}" target="_blank">${source.title}</a> <span class="badge bg-warning text-dark">Web</span></li>`;
+                        } else {
+                            return `<li>${source.title} <span class="badge bg-info">Document</span></li>`;
+                        }
+                    });
+                    
+                    sourcesList.innerHTML = `<ol>${sourceItems.join('')}</ol>`;
+                    
+                    // Toggle sources visibility
+                    sourcesToggle.addEventListener('click', () => {
+                        const isVisible = sourcesList.style.display === 'block';
+                        sourcesList.style.display = isVisible ? 'none' : 'block';
+                        sourcesToggle.innerHTML = isVisible 
+                            ? `<i class="bi bi-info-circle"></i> Show sources (${sources.length})` 
+                            : `<i class="bi bi-info-circle-fill"></i> Hide sources`;
+                    });
+                    
+                    messageDiv.appendChild(sourcesToggle);
+                    messageDiv.appendChild(sourcesList);
+                }
+                
+                chatMessages.appendChild(messageDiv);
+                
+                // Scroll to bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>
