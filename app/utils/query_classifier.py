@@ -31,8 +31,8 @@ class QueryClassifier:
         self.confidence_threshold = confidence_threshold
         self.logger = logging.getLogger(__name__)
         
-        # Initialize with default product terms
-        self.product_terms = ["duplocloud", "tenant", "infrastructure"]
+        # Initialize with default domain-specific terms
+        self.product_terms = ["tenant", "infrastructure", "platform", "service", "configuration"]
             
     def update_terms_from_db(self, db_collection, ollama_client=None):
         """
