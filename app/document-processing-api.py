@@ -146,8 +146,15 @@ doc_processor = DocumentProcessor(
 )
 
 # Initialize Query Classifier for determining when to use web search
-# Pass the ChromaDB collection and Ollama client to extract domain-specific terms
-query_classifier = QueryClassifier(confidence_threshold=0.6, db_collection=db_collection)
+# Pass the ChromaDB collection to extract domain-specific terms, but postpone term extraction until we have ollama_client
+query_classifier = QueryClassifier(confidence_threshold=0.6)
+
+# Initialize the domain terms from the database after both the classifier and Ollama client are initialized
+try:
+    query_classifier.product_terms = ["duplocloud", "tenant", "infrastructure"]  # Default terms
+except Exception as e:
+    print(f"Error initializing domain terms: {e}")
+    # Continue with minimal default terms
 
 # Initialize PDF extractor
 pdf_extractor = PDFExtractor(temp_dir=DOCS_FOLDER)
@@ -248,6 +255,16 @@ async def health_check():
             embedding = ollama_client.generate_embedding("test health check")
             if embedding and len(embedding) > 0:
                 health_status["models"]["embedding_model"] += f" - working (dimension: {len(embedding)})"
+                
+                # Initialize domain terms if collection has documents but terms aren't initialized
+                if (health_status["collection"]["document_count"] > 0 and 
+                    len(query_classifier.product_terms) <= 3):  # Only default terms
+                    try:
+                        print("Initializing domain terms with Ollama during health check")
+                        query_classifier.update_terms_from_db(db_collection, ollama_client)
+                        print(f"Domain terms initialized: {len(query_classifier.product_terms)} terms extracted")
+                    except Exception as e:
+                        print(f"Failed to initialize domain terms: {e}")
         except Exception as e:
             health_status["models"]["embedding_model"] += f" - error: {str(e)}"
     

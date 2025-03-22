@@ -8,27 +8,18 @@ class QueryClassifier:
     web search, or a hybrid approach.
     """
     
-    def __init__(self, confidence_threshold: float = 0.6, db_collection=None):
+    def __init__(self, confidence_threshold: float = 0.6):
         """
-        Initialize the classifier with DuploCloud-specific terminology.
+        Initialize the classifier with default settings.
         
         Args:
             confidence_threshold: Threshold for classification decisions (0-1)
-            db_collection: ChromaDB collection to extract domain terms from
         """
         self.confidence_threshold = confidence_threshold
         self.logger = logging.getLogger(__name__)
         
-        # Initialize empty product terms
-        self.product_terms = []
-        
-        # Extract domain terms from ChromaDB if provided
-        if db_collection:
-            self.update_terms_from_db(db_collection)
-        
-        # Ensure we have at least some minimal terms if no documents are found
-        if not self.product_terms:
-            self.product_terms = ["duplocloud", "tenant", "infrastructure"]
+        # Initialize with default product terms
+        self.product_terms = ["duplocloud", "tenant", "infrastructure"]
             
     def update_terms_from_db(self, db_collection, ollama_client):
         """
