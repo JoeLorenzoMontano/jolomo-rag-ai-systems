@@ -6,10 +6,23 @@ This module provides endpoints for querying the document database.
 
 from fastapi import APIRouter, HTTPException, Depends, Query as QueryParam
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 
 from core.dependencies import get_query_service
 
 router = APIRouter(tags=["query"])
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    n_results: int = 3
+    combine_chunks: bool = True
+    web_search: Optional[bool] = None
+    web_results_count: int = 3
+    enhance_query: bool = True
 
 @router.get("/query", summary="Retrieve relevant documents", 
            description="Query for the most relevant document based on input text.")
@@ -60,5 +73,95 @@ async def query_documents(
             error_response["response"] = f"An error occurred while processing your query: {str(e)}"
             
         error_response["sources"] = {"documents": [], "ids": [], "metadatas": []}
+        
+        return error_response
+        
+@router.post("/chat", summary="Chat with contextual memory", 
+           description="Query with chat history and RAG for a conversational experience.")
+async def chat_query(
+    chat_request: ChatRequest
+):
+    """Process a chat query with conversation history."""
+    query_service = get_query_service()
+    
+    try:
+        # Get the latest user message (should be the last message in the list)
+        if not chat_request.messages or len(chat_request.messages) == 0:
+            return {
+                "status": "error",
+                "response": "No messages provided in the request.",
+                "sources": {"documents": [], "ids": [], "metadatas": []}
+            }
+            
+        # Extract the latest user message to use as query
+        latest_message = None
+        for msg in reversed(chat_request.messages):
+            if msg.role == "user":
+                latest_message = msg.content
+                break
+                
+        if not latest_message:
+            return {
+                "status": "error",
+                "response": "No user message found in the conversation history.",
+                "sources": {"documents": [], "ids": [], "metadatas": []}
+            }
+            
+        # First, do a regular query to get relevant documents
+        rag_result = query_service.process_query(
+            query=latest_message,
+            n_results=chat_request.n_results,
+            combine_chunks=chat_request.combine_chunks,
+            web_search=chat_request.web_search,
+            web_results_count=chat_request.web_results_count,
+            explain_classification=False,  # Always false for chat
+            enhance_query=chat_request.enhance_query
+        )
+        
+        # Check if we got a valid result
+        if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
+            return rag_result
+            
+        # Convert messages to the format expected by the Ollama API
+        ollama_messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
+        
+        # Get the context from the RAG result
+        context = None
+        if rag_result.get("sources") and rag_result.get("sources").get("documents"):
+            documents = rag_result.get("sources").get("documents")
+            if documents:
+                # Combine all retrieved documents as context
+                context = "\n\n".join(documents)
+        
+        # Generate a chat response with the context
+        response = query_service.process_chat(
+            messages=ollama_messages,
+            context=context
+        )
+        
+        # Add the sources from the RAG query to the chat response
+        response["sources"] = rag_result.get("sources", {"documents": [], "ids": [], "metadatas": []})
+        
+        # Add the source_type if available
+        if "source_type" in rag_result:
+            response["source_type"] = rag_result["source_type"]
+            
+        # Add web_search_used if available
+        if "web_search_used" in rag_result:
+            response["web_search_used"] = rag_result["web_search_used"]
+        
+        return response
+        
+    except Exception as e:
+        # Log the error
+        print(f"Error in chat_query: {e}")
+        
+        # Return a helpful error response
+        error_response = {
+            "status": "error",
+            "error": str(e),
+            "response": f"An error occurred while processing your chat query: {str(e)}",
+            "sources": {"documents": [], "ids": [], "metadatas": []}
+        }
         
         return error_response

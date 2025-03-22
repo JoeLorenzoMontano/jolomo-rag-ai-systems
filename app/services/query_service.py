@@ -5,7 +5,7 @@ This module handles query processing, document retrieval, and response generatio
 """
 
 import logging
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional, Union
 
 from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
@@ -324,3 +324,42 @@ class QueryService:
             combined_distances.append(group["avg_distance"])
             
         return combined_docs, combined_ids, combined_metadatas, combined_distances
+        
+    def process_chat(self, messages: List[Dict[str, str]], context: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Process a chat query with conversation history.
+        
+        Args:
+            messages: List of message objects with 'role' and 'content' keys
+            context: Optional context from RAG to use for grounding responses
+            
+        Returns:
+            Dictionary with the response and other metadata
+        """
+        try:
+            # Generate a chat response using the Ollama chat API
+            response = self.ollama_client.generate_chat_response(
+                messages=messages,
+                context=context
+            )
+            
+            # Prepare the response object
+            response_data = {
+                "status": "success",
+                "response": response,
+                "messages": messages
+            }
+            
+            return response_data
+            
+        except Exception as e:
+            self.logger.error(f"Error in process_chat: {e}")
+            
+            # Return an error response
+            error_response = {
+                "status": "error",
+                "error": str(e),
+                "response": f"An error occurred while processing your chat: {str(e)}"
+            }
+            
+            return error_response

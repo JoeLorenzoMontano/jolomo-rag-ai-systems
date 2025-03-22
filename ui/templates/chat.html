@@ -154,6 +154,15 @@
             const clearChatButton = document.getElementById('clear-chat');
             const typingIndicator = document.getElementById('typing-indicator');
             
+            // Store conversation history
+            let conversationHistory = [
+                // Start with system welcome message
+                {
+                    role: 'assistant',
+                    content: 'Hello! I\'m your RAG-powered assistant. Ask me anything about the documents that have been indexed.'
+                }
+            ];
+            
             // Auto-resize textarea as user types
             chatInput.addEventListener('input', function() {
                 this.style.height = 'auto';
@@ -169,6 +178,14 @@
                 while (chatMessages.children.length > 1) {
                     chatMessages.removeChild(chatMessages.lastChild);
                 }
+                
+                // Reset conversation history
+                conversationHistory = [
+                    {
+                        role: 'assistant',
+                        content: 'Hello! I\'m your RAG-powered assistant. Ask me anything about the documents that have been indexed.'
+                    }
+                ];
             });
             
             // Handle form submission
@@ -178,8 +195,14 @@
                 const message = chatInput.value.trim();
                 if (!message) return;
                 
-                // Add user message to chat
+                // Add user message to chat UI
                 addMessage(message, 'user');
+                
+                // Add to conversation history
+                conversationHistory.push({
+                    role: 'user',
+                    content: message
+                });
                 
                 // Clear input and resize
                 chatInput.value = '';
@@ -189,20 +212,19 @@
                 typingIndicator.style.display = 'block';
                 
                 try {
-                    // Call the API
+                    // Call the API with full conversation history
                     const response = await fetch('/chat-query', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            query: message,
+                            messages: conversationHistory,
                             n_results: 3,
                             combine_chunks: true,
                             enhance_query: true,
                             web_search: null, // Auto-classify
-                            web_results_count: 3,
-                            explain_classification: false
+                            web_results_count: 3
                         })
                     });
                     
@@ -245,6 +267,12 @@
                         
                         // Add message with sources
                         addMessage(data.response, 'assistant', sources);
+                        
+                        // Add the assistant's response to the conversation history
+                        conversationHistory.push({
+                            role: 'assistant',
+                            content: data.response
+                        });
                     }
                 } catch (error) {
                     // Hide typing indicator

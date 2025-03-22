@@ -1,7 +1,7 @@
 import requests
 import re
 import os
-from typing import List, Optional
+from typing import List, Dict, Any, Optional, Union
 
 class OllamaClient:
     def __init__(self, base_url: str = None, model: str = None, embedding_model: str = None):
@@ -138,6 +138,74 @@ class OllamaClient:
         Removes `<think>...</think>` sections from the AI output.
         """
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        
+    def generate_chat_response(self, 
+                              messages: List[Dict[str, str]], 
+                              context: Optional[str] = None, 
+                              model: Optional[str] = None,
+                              max_tokens: Optional[int] = None) -> str:
+        """
+        Generates a chat response using the Ollama /api/chat endpoint.
+        
+        Args:
+            messages: List of message objects with 'role' and 'content' keys
+                     (role can be 'user', 'assistant', or 'system')
+            context: Optional context from RAG to include
+            model: Optional model override
+            max_tokens: Optional token limit
+            
+        Returns:
+            Response text from the model
+        """
+        current_model = model or self.model
+        
+        # Check if the model exists, if not pull it
+        self._ensure_model_exists(current_model)
+        
+        # Create a copy of messages to avoid modifying the original
+        chat_messages = list(messages)
+        
+        # If we have RAG context, prepend a system message with instructions
+        if context:
+            # Add system message with RAG instructions
+            rag_system_message = {
+                "role": "system",
+                "content": (
+                    "You are an AI assistant that provides accurate answers based on the provided context.\n"
+                    "### 🔹 **Rules (MUST FOLLOW):**\n"
+                    "1. **You MUST ONLY use information from the provided context.**\n"
+                    "2. **If the answer is NOT in the context, say you don't have that information.**\n"
+                    "3. **You MUST NOT generate an answer using external knowledge.**\n"
+                    "4. **You MUST NOT make up any information.**\n\n"
+                    f"### 🔹 **Context (ONLY use the information provided below):**\n\n{context}\n\n"
+                )
+            }
+            
+            # Insert the rag system message at the beginning
+            chat_messages.insert(0, rag_system_message)
+        
+        # Build payload for the API
+        payload = {
+            "model": current_model,
+            "messages": chat_messages,
+            "stream": False,  # Don't use streaming for now
+        }
+        
+        # Add max_tokens if provided
+        if max_tokens:
+            payload["options"] = {"num_predict": max_tokens}
+        
+        # Call the Ollama chat API
+        response = requests.post(f"{self.base_url}/api/chat", json=payload)
+        response.raise_for_status()
+        result = response.json()
+        
+        # Extract the assistant's response
+        if "message" in result:
+            return result["message"]["content"]
+        else:
+            # Fallback if the response format is different
+            return result.get("response", "No response generated.")
     
     def enhance_query(self, original_query: str) -> str:
         """
