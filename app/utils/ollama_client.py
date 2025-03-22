@@ -139,38 +139,67 @@ class OllamaClient:
         """
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
         
-    def generate_semantic_enrichment(self, chunk_text: str, chunk_id: str) -> str:
+    def generate_semantic_enrichment(self, chunk_text: str, chunk_id: str, prev_chunk_text: str = None, next_chunk_text: str = None) -> str:
         """
         Generates a semantic enrichment for a document chunk to improve retrieval quality.
-        This enrichment includes key concepts, alternative terminology, and related concepts.
+        This generates a contextual summary that captures the meaning of the chunk by considering
+        surrounding context when available.
         
         Args:
             chunk_text: The original text chunk to enhance
             chunk_id: Identifier for the chunk (used for logging/debugging)
+            prev_chunk_text: Text from the previous chunk (if available)
+            next_chunk_text: Text from the next chunk (if available)
             
         Returns:
-            Enhanced text that can be added to the original for better matching
+            Contextual summary that can be added to the original for better matching
         """
         # Check if the model exists, if not pull it
         current_model = self.model
         self._ensure_model_exists(current_model)
         
-        # Prompt designed to produce a concise, retrieval-focused enrichment
-        prompt = f"""You are a knowledge augmentation system that enhances text chunks for semantic search.
-Given the following document chunk, extract and generate:
-1. Key concepts and entities (2-4 items)
-2. Alternative terminology or synonyms for important terms (3-5 items)
-3. A very concise summary (1-2 sentences)
-4. Related concepts that might be queried but aren't explicitly mentioned (2-3 items)
+        # Set up context sections based on what's available
+        context_parts = []
+        if prev_chunk_text:
+            # Include a shortened version of previous chunk for context
+            prev_context = prev_chunk_text[:500] + "..." if len(prev_chunk_text) > 500 else prev_chunk_text
+            context_parts.append(f"PREVIOUS CONTEXT:\n{prev_context}")
+            
+        if next_chunk_text:
+            # Include a shortened version of next chunk for context
+            next_context = next_chunk_text[:500] + "..." if len(next_chunk_text) > 500 else next_chunk_text
+            context_parts.append(f"FOLLOWING CONTEXT:\n{next_context}")
+            
+        # Join context sections if any exist
+        context_section = "\n\n".join(context_parts)
+        context_instruction = ""
+        
+        if context_section:
+            context_instruction = f"""
+I'm providing surrounding context to help you understand the meaning, but focus your summary on the MAIN CHUNK.
 
-Format your response using these exact headings, with each section as a concise bullet list:
+{context_section}
+"""
+        
+        # Prompt designed to produce a concise, contextual summary
+        prompt = f"""You are a semantic document analyzer that creates precise, meaningful summaries for document chunks.
 
-DOCUMENT CHUNK:
+Your task is to create a contextual summary for document retrieval that captures the key meaning and information of the main chunk.
+
+{context_instruction}
+
+MAIN CHUNK:
 ```
 {chunk_text}
 ```
 
-Your response MUST be in this exact format:
+Generate a concise summary (2-3 sentences) that:
+1. Captures the key information and meaning of the main chunk
+2. Includes important terms, entities and concepts that someone might search for
+3. Provides context about how this information fits into the larger document
+4. Uses clear, direct language focused on retrieval
+
+Format your response as a single paragraph without headings or bullet points:
 """
 
         payload = {
@@ -179,7 +208,7 @@ Your response MUST be in this exact format:
             "stream": False,
             "options": {
                 "temperature": 0.1,  # Use low temperature for consistent, focused output
-                "num_predict": 500   # Limit to ~500 tokens for concise enrichment
+                "num_predict": 300   # Limit to ~300 tokens for concise summary
             }
         }
 
@@ -190,39 +219,39 @@ Your response MUST be in this exact format:
             enrichment = result.get("response", "").strip()
             
             # Process the enrichment to clean it up
-            processed_enrichment = self._process_enrichment(enrichment)
+            processed_enrichment = self._process_contextual_summary(enrichment)
             
-            print(f"Generated semantic enrichment for chunk {chunk_id} ({len(processed_enrichment)} chars)")
+            print(f"Generated contextual summary for chunk {chunk_id} ({len(processed_enrichment)} chars)")
             return processed_enrichment
             
         except Exception as e:
-            print(f"Error generating semantic enrichment for chunk {chunk_id}: {e}")
+            print(f"Error generating contextual summary for chunk {chunk_id}: {e}")
             return ""  # Return empty string on error
     
-    def _process_enrichment(self, enrichment: str) -> str:
+    def _process_contextual_summary(self, summary: str) -> str:
         """
-        Processes the generated enrichment to ensure it's clean and useful for retrieval.
+        Processes the generated summary to ensure it's clean and useful for retrieval.
         """
-        # Remove any "DOCUMENT CHUNK" sections that might have been generated
-        enrichment = re.sub(r'DOCUMENT CHUNK:.*?```', '', enrichment, flags=re.DOTALL)
-        
-        # Remove code block syntax
-        enrichment = enrichment.replace("```", "")
+        # Remove any code block syntax that might have been generated
+        summary = summary.replace("```", "")
         
         # Remove any thinking indicators
-        enrichment = self._remove_think_regions(enrichment)
+        summary = self._remove_think_regions(summary)
         
-        # If any Markdown-style headings are missing, add them
-        required_sections = [
-            "KEY CONCEPTS AND ENTITIES", 
-            "ALTERNATIVE TERMINOLOGY", 
-            "SUMMARY", 
-            "RELATED CONCEPTS"
-        ]
+        # Remove any "SUMMARY:" prefix that might have been generated
+        summary = re.sub(r'^SUMMARY:\s*', '', summary, flags=re.IGNORECASE)
         
-        # Check if each section exists, otherwise prepend it
-        for section in required_sections:
-            if section not in enrichment:
-                enrichment += f"\n\n{section}:\n- N/A"
+        # Remove any markdown or heading syntax
+        summary = re.sub(r'^#+\s+', '', summary, re.MULTILINE)
+        
+        # Convert bullet points to regular text if present
+        summary = re.sub(r'^\s*[-*•]\s+', '', summary, flags=re.MULTILINE)
+        
+        # Ensure the summary starts with "This section" or similar contextual phrase if it doesn't already
+        if not re.match(r'^(This|The|These|In this)', summary, re.IGNORECASE):
+            summary = "This section " + summary[0].lower() + summary[1:]
+        
+        # Add a prefix to make it clear this is a summary
+        summary = "CONTEXT SUMMARY: " + summary
                 
-        return enrichment.strip()
+        return summary.strip()

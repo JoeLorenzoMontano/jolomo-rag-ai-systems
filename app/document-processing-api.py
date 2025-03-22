@@ -379,7 +379,10 @@ def process_documents_task(
                                 file_successful = 0
                                 file_failed = 0
                                 
-                                for chunk_text, chunk_id in chunks:
+                                # First collect all chunks to allow for context passing
+                                chunk_list = list(chunks)
+                                
+                                for i, (chunk_text, chunk_id) in enumerate(chunk_list):
                                     try:
                                         # Skip empty chunks
                                         if not chunk_text.strip():
@@ -401,14 +404,30 @@ def process_documents_task(
                                         # Generate semantic enrichment if enabled
                                         if enhance_chunks:
                                             try:
-                                                enrichment = ollama_client.generate_semantic_enrichment(chunk_text, chunk_id)
+                                                # Get previous and next chunks for context if they exist
+                                                prev_chunk_text = None
+                                                next_chunk_text = None
+                                                
+                                                if i > 0:
+                                                    prev_chunk_text = chunk_list[i-1][0]
+                                                    
+                                                if i < len(chunk_list) - 1:
+                                                    next_chunk_text = chunk_list[i+1][0]
+                                                    
+                                                # Generate context-aware summary
+                                                enrichment = ollama_client.generate_semantic_enrichment(
+                                                    chunk_text, 
+                                                    chunk_id,
+                                                    prev_chunk_text,
+                                                    next_chunk_text
+                                                )
                                                 
                                                 if enrichment.strip():
                                                     enhanced_text = f"{chunk_text}\n\nENRICHMENT:\n{enrichment}"
                                                     processing_text = enhanced_text
                                                     metadata["has_enrichment"] = True
                                                     metadata["enrichment"] = enrichment
-                                                    print(f"Job {job_id}: Enhanced chunk {chunk_id} with semantic enrichment")
+                                                    print(f"Job {job_id}: Enhanced chunk {chunk_id} with contextual summary")
                                             except Exception as e:
                                                 print(f"Job {job_id}: Error generating enrichment for {chunk_id}: {e}")
                                                 metadata["has_enrichment"] = False
@@ -1053,12 +1072,14 @@ def process_single_file_task(job_id: str, file_path: str):
         with job_lock:
             processing_jobs[job_id]["progress"] = 50
         
-        # Process chunks
-        for i, chunk_text in enumerate(all_chunks):
+        # Process chunks with context
+        chunk_pairs = list(zip(all_chunks, all_chunk_ids))
+        
+        for i, (chunk_text, chunk_id) in enumerate(chunk_pairs):
             try:
                 # Skip empty chunks
                 if not chunk_text.strip():
-                    print(f"Job {job_id}: Skipping empty chunk: {all_chunk_ids[i]}")
+                    print(f"Job {job_id}: Skipping empty chunk: {chunk_id}")
                     failed += 1
                     continue
                 
@@ -1066,10 +1087,25 @@ def process_single_file_task(job_id: str, file_path: str):
                 processing_text = chunk_text
                 metadata = {"original_text": chunk_text}
                 
-                # Generate semantic enrichment
+                # Generate semantic enrichment with context
                 try:
-                    # Generate enrichment for the chunk
-                    enrichment = ollama_client.generate_semantic_enrichment(chunk_text, all_chunk_ids[i])
+                    # Get previous and next chunks for context if they exist
+                    prev_chunk_text = None
+                    next_chunk_text = None
+                    
+                    if i > 0:
+                        prev_chunk_text = chunk_pairs[i-1][0]
+                        
+                    if i < len(chunk_pairs) - 1:
+                        next_chunk_text = chunk_pairs[i+1][0]
+                    
+                    # Generate enrichment with context
+                    enrichment = ollama_client.generate_semantic_enrichment(
+                        chunk_text, 
+                        chunk_id,
+                        prev_chunk_text,
+                        next_chunk_text
+                    )
                     
                     if enrichment.strip():
                         # Create the enhanced text by combining original with enrichment
@@ -1082,7 +1118,7 @@ def process_single_file_task(job_id: str, file_path: str):
                         metadata["has_enrichment"] = True
                         metadata["enrichment"] = enrichment
                         
-                        print(f"Job {job_id}: Enhanced chunk {all_chunk_ids[i]} with semantic enrichment")
+                        print(f"Job {job_id}: Enhanced chunk {chunk_id} with contextual summary")
                 except Exception as e:
                     print(f"Job {job_id}: Error generating enrichment: {e}")
                     metadata["has_enrichment"] = False
