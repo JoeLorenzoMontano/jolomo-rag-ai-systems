@@ -831,32 +831,97 @@ async def query_documents(
         return error_response
 
 @app.post("/refresh-terms", summary="Refresh domain terms", description="Refreshes the domain-specific terms used for query classification based on current document content.")
-async def refresh_domain_terms():
+async def refresh_domain_terms(background_tasks: BackgroundTasks):
     """Refresh the domain-specific terms used in query classification using LLM extraction"""
     try:
         # Get document count before refresh
         prev_term_count = len(query_classifier.product_terms)
         
-        # Refresh terms from ChromaDB using Ollama
-        print("Using Ollama for domain term extraction")
-        query_classifier.update_terms_from_db(db_collection, ollama_client)
+        # Start a background task for term extraction
+        job_id = str(uuid.uuid4())
         
-        # Get updated term count
-        new_term_count = len(query_classifier.product_terms)
+        # Set up a job to track term extraction progress
+        with job_lock:
+            processing_jobs[job_id] = {
+                "status": JOB_STATUS_QUEUED,
+                "progress": 0,
+                "type": "term_extraction",
+                "error": None,
+                "result": None
+            }
+        
+        # Add the background task
+        background_tasks.add_task(
+            refresh_domain_terms_background_task,
+            job_id=job_id
+        )
         
         return {
             "status": "success",
-            "message": "Domain terms refreshed successfully using LLM-powered extraction",
-            "extraction_method": "LLM-powered",
+            "message": "Domain term extraction started in the background",
+            "job_id": job_id,
             "previous_term_count": prev_term_count,
-            "new_term_count": new_term_count,
-            "sample_terms": query_classifier.product_terms[:20]  # Show first 20 terms as a sample
+            "current_terms_sample": query_classifier.product_terms[:10]  # Show first 10 terms as a sample
         }
     except Exception as e:
         return {
             "status": "error",
             "message": f"Error refreshing domain terms: {str(e)}"
         }
+
+def refresh_domain_terms_background_task(job_id: str):
+    """Background task for refreshing domain terms using LLM"""
+    try:
+        # Update job status to processing
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_PROCESSING
+            processing_jobs[job_id]["progress"] = 10
+        
+        # Get document count before refresh
+        prev_term_count = len(query_classifier.product_terms)
+        
+        # Refresh terms from ChromaDB using Ollama
+        print(f"Job {job_id}: Using Ollama for domain term extraction")
+        
+        # Update progress
+        with job_lock:
+            processing_jobs[job_id]["progress"] = 30
+        
+        # Do the actual term extraction
+        query_classifier.update_terms_from_db(db_collection, ollama_client)
+        
+        # Update progress
+        with job_lock:
+            processing_jobs[job_id]["progress"] = 80
+        
+        # Get updated term count
+        new_term_count = len(query_classifier.product_terms)
+        
+        # Prepare result
+        result = {
+            "message": "Domain terms refreshed successfully using LLM-powered extraction",
+            "extraction_method": "LLM-powered",
+            "previous_term_count": prev_term_count,
+            "new_term_count": new_term_count,
+            "sample_terms": query_classifier.product_terms[:20]  # Show first 20 terms as a sample
+        }
+        
+        # Update job status to completed
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_COMPLETED
+            processing_jobs[job_id]["progress"] = 100
+            processing_jobs[job_id]["result"] = result
+        
+        print(f"Job {job_id}: Domain term extraction completed - {new_term_count} terms extracted")
+        
+    except Exception as e:
+        error_message = f"Error in domain term extraction: {str(e)}"
+        print(f"Job {job_id}: {error_message}")
+        
+        # Update job status to failed
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_FAILED
+            processing_jobs[job_id]["error"] = error_message
 
 @app.get("/job/{job_id}", summary="Get job status", description="Check the status of a document processing job.")
 async def get_job_status(job_id: str):
