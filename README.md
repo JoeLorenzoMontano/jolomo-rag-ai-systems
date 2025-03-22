@@ -29,7 +29,7 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 3. (Optional) Create a `.env` file for configuration:
    ```
    # Ollama Settings
-   MODEL=llama2:latest
+   MODEL=llama3:latest
    EMBEDDING_MODEL=all-minilm:l6-v2
    
    # For web search (optional)
