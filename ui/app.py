@@ -194,6 +194,40 @@ def api_health():
     except Exception as e:
         logging.error(f"Error getting health status: {e}")
         return jsonify({"status": "error", "message": str(e)})
+        
+@app.route('/api/chunks', methods=['GET'])
+def get_chunks():
+    """Get document chunks from ChromaDB"""
+    try:
+        # Get parameters
+        limit = request.args.get('limit', 20)
+        offset = request.args.get('offset', 0)
+        filename = request.args.get('filename', '')
+        content = request.args.get('content', '')
+        
+        # Build query parameters
+        params = {
+            'limit': limit,
+            'offset': offset
+        }
+        
+        if filename:
+            params['filename'] = filename
+            
+        if content:
+            params['content'] = content
+            
+        # Call the API
+        response = requests.get(f"{API_URL}/chunks", params=params, timeout=15)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error getting chunks: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/chunks', methods=['GET'])
+def chunks_page():
+    """Render the chunks explorer page"""
+    return render_template('chunks.html')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

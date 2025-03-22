@@ -887,6 +887,80 @@ async def list_domain_terms():
             "message": f"Error listing domain terms: {str(e)}"
         }
 
+@app.get("/chunks", summary="List document chunks", description="Retrieve chunks stored in ChromaDB with optional filtering.")
+async def list_document_chunks(
+    limit: int = Query(20, description="Limit the number of chunks returned"),
+    offset: int = Query(0, description="Starting offset for pagination"),
+    filename: str = Query(None, description="Filter by filename (partial match)"),
+    content: str = Query(None, description="Filter by content (partial match)")
+):
+    """List document chunks stored in the database with filtering options"""
+    try:
+        # Get collection count to verify it's accessible
+        doc_count = db_collection.count()
+        if doc_count == 0:
+            return {
+                "status": "empty",
+                "message": "No documents in the database",
+                "chunks": [],
+                "total": 0
+            }
+            
+        # Build query parameters
+        where_clause = {}
+        
+        # Add filename filter if provided
+        if filename:
+            where_clause["filename"] = {"$like": f"%{filename}%"}
+            
+        # Create the query to get chunks
+        query_results = db_collection.get(
+            limit=limit,
+            offset=offset,
+            where=where_clause if where_clause else None,
+            include=["documents", "metadatas", "embeddings"]
+        )
+        
+        # Extract the results
+        chunks = []
+        for i, doc in enumerate(query_results["documents"]):
+            metadata = query_results["metadatas"][i] if "metadatas" in query_results else {}
+            
+            # Skip if content filter is provided and doesn't match
+            if content and content.lower() not in doc.lower():
+                continue
+                
+            # Extract original text if it exists
+            original_text = metadata.get("original_text", doc)
+            
+            # Get enrichment if it exists
+            enrichment = metadata.get("enrichment", "")
+            has_enrichment = metadata.get("has_enrichment", False)
+            
+            chunks.append({
+                "id": query_results["ids"][i],
+                "text": original_text,
+                "filename": metadata.get("filename", "unknown"),
+                "has_enrichment": has_enrichment,
+                "enrichment": enrichment if has_enrichment else "",
+                "embedding_dimension": len(query_results["embeddings"][i]) if "embeddings" in query_results else 0
+            })
+        
+        # Return the results
+        return {
+            "status": "success",
+            "total_in_db": doc_count,
+            "chunks_returned": len(chunks),
+            "chunks": chunks
+        }
+    except Exception as e:
+        print(f"Error retrieving chunks: {e}")
+        return {
+            "status": "error",
+            "message": f"Error retrieving chunks: {str(e)}",
+            "chunks": []
+        }
+
 @app.get("/openapi.json", include_in_schema=False)
 def custom_openapi():
     return get_openapi(
