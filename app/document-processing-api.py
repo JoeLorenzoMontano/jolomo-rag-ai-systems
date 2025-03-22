@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Tuple, Optional
+import threading
+import uuid
 import chromadb
 from chromadb.config import Settings
 import os
@@ -145,6 +147,22 @@ doc_processor = DocumentProcessor(
 query_classifier = QueryClassifier(confidence_threshold=0.6, db_collection=db_collection)
 
 # ===============================================================
+# Background Processing Job Tracking
+# ===============================================================
+
+# Dictionary to track background processing jobs
+processing_jobs = {}
+
+# Job status constants
+JOB_STATUS_QUEUED = "queued"
+JOB_STATUS_PROCESSING = "processing"
+JOB_STATUS_COMPLETED = "completed"
+JOB_STATUS_FAILED = "failed"
+
+# Thread-safe lock for updating job status
+job_lock = threading.Lock()
+
+# ===============================================================
 # API Endpoints
 # ===============================================================
 
@@ -229,258 +247,352 @@ async def health_check():
     
     return health_status
 
-@app.post("/process", summary="Process and store document embeddings", description="Processes documents and stores their embeddings in ChromaDB.")
+@app.post("/process", summary="Start document embedding processing in the background", description="Starts processing documents in the background and returns a job ID for tracking progress.")
 async def process_documents(
+    background_tasks: BackgroundTasks,
     chunk_size: int = Query(None, description="Override max chunk size (chars)"),
     min_size: int = Query(None, description="Override min chunk size (chars)"),
     overlap: int = Query(None, description="Override chunk overlap (chars)"),
     enable_chunking: bool = Query(None, description="Override chunking enabled setting"),
     enhance_chunks: bool = Query(True, description="Generate additional content with Ollama to improve retrieval")
 ):
-    # Apply overrides if provided without modifying globals
-    temp_max_chunk_size = chunk_size if chunk_size is not None else MAX_CHUNK_SIZE
-    temp_min_chunk_size = min_size if min_size is not None else MIN_CHUNK_SIZE
-    temp_chunk_overlap = overlap if overlap is not None else CHUNK_OVERLAP
-    temp_enable_chunking = enable_chunking if enable_chunking is not None else ENABLE_CHUNKING
+    # Create a unique job ID
+    job_id = str(uuid.uuid4())
     
-    # Log if semantic enrichment is enabled
-    if enhance_chunks:
-        print(f"Semantic chunk enrichment is ENABLED - will use Ollama to enhance chunks for better retrieval")
+    # Set up initial job status
+    with job_lock:
+        processing_jobs[job_id] = {
+            "status": JOB_STATUS_QUEUED,
+            "progress": 0,
+            "total_files": 0,
+            "processed_files": 0,
+            "successful_chunks": 0,
+            "failed_chunks": 0,
+            "error": None,
+            "settings": {
+                "chunk_size": chunk_size if chunk_size is not None else MAX_CHUNK_SIZE,
+                "min_size": min_size if min_size is not None else MIN_CHUNK_SIZE,
+                "overlap": overlap if overlap is not None else CHUNK_OVERLAP,
+                "enable_chunking": enable_chunking if enable_chunking is not None else ENABLE_CHUNKING,
+                "enhance_chunks": enhance_chunks
+            },
+            "result": None
+        }
     
-    # Log chunking settings for this run
-    if (chunk_size is not None or min_size is not None or 
-        overlap is not None or enable_chunking is not None):
-        print(f"Using custom chunking settings for this run:")
-        print(f"  ENABLE_CHUNKING: {temp_enable_chunking}")
-        print(f"  MAX_CHUNK_SIZE: {temp_max_chunk_size} chars")
-        print(f"  MIN_CHUNK_SIZE: {temp_min_chunk_size} chars")
-        print(f"  CHUNK_OVERLAP: {temp_chunk_overlap} chars")
+    # Add the background task
+    background_tasks.add_task(
+        process_documents_task, 
+        job_id=job_id,
+        chunk_size=chunk_size, 
+        min_size=min_size, 
+        overlap=overlap, 
+        enable_chunking=enable_chunking,
+        enhance_chunks=enhance_chunks
+    )
     
-    # Document containers
+    # Return the job ID and initial status
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": "Document processing started in background. Use /job/{job_id} to check status."
+    }
+
+def process_documents_task(
+    job_id: str,
+    chunk_size: Optional[int] = None,
+    min_size: Optional[int] = None,
+    overlap: Optional[int] = None,
+    enable_chunking: Optional[bool] = None,
+    enhance_chunks: bool = True
+):
+    # Keep track of results
+    successful = 0
+    failed = 0
+    failed_files = []
     all_chunks = []
     all_chunk_ids = []
     source_files = []
     
-    # Function to process files recursively
-    def process_directory(directory):
-        for filename in os.listdir(directory):
-            file_path = os.path.join(directory, filename)
-            if os.path.isdir(file_path):
-                # Recursively process subdirectories
-                process_directory(file_path)
-            elif os.path.isfile(file_path) and file_path.endswith('.md'):
-                source_files.append(file_path)  # Track all source files for reporting
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        # Use relative path as identifier
-                        rel_path = os.path.relpath(file_path, DOCS_FOLDER)
-                        
-                        # Apply chunking with temp settings
-                        try:
-                            # Create a temporary document processor with custom settings
-                            temp_processor = DocumentProcessor(
-                                max_chunk_size=temp_max_chunk_size,
-                                min_chunk_size=temp_min_chunk_size,
-                                chunk_overlap=temp_chunk_overlap,
-                                enable_chunking=temp_enable_chunking
-                            )
-                            
-                            # Use the document processor with temporary settings
-                            chunks = temp_processor.chunk_document(content, rel_path)
-                            
-                            # Add chunks to our collection
-                            for chunk_text, chunk_id in chunks:
-                                all_chunks.append(chunk_text)
-                                all_chunk_ids.append(chunk_id)
-                        finally:
-                            # Nothing to restore as we're not modifying globals anymore
-                            pass
-                except Exception as e:
-                    print(f"Error reading file {file_path}: {e}")
-    
-    # Process all files recursively
-    process_directory(DOCS_FOLDER)
-    
-    if not all_chunks:
-        raise HTTPException(status_code=400, detail="No documents to process.")
-    
-    print(f"Processing {len(all_chunks)} chunks from {len(source_files)} source files")
-    
-    # Process chunks in batches to avoid memory issues
-    batch_size = 5
-    successful = 0
-    failed = 0
-    failed_files = []
-    
-    for i in range(0, len(all_chunks), batch_size):
-        batch_docs = all_chunks[i:i+batch_size]
-        batch_ids = all_chunk_ids[i:i+batch_size]
-        
-        try:
-            # Generate embeddings for the current batch - use a safer approach to handle errors
-            batch_embeddings = []
-            valid_docs = []
-            valid_ids = []
-            valid_metadatas = []
-            
-            for j, doc in enumerate(batch_docs):
-                try:
-                    # Skip empty documents
-                    if not doc.strip():
-                        print(f"Skipping empty chunk: {batch_ids[j]}")
-                        failed += 1
-                        failed_files.append(f"{batch_ids[j]} (empty)")
-                        continue
-                    
-                    # Determine whether to use original or enriched text for embedding
-                    processing_text = doc
-                    metadata = {"original_text": doc}
-                    
-                    # Generate semantic enrichment if enabled
-                    if enhance_chunks:
-                        try:
-                            # Generate enrichment for the chunk
-                            enrichment = ollama_client.generate_semantic_enrichment(doc, batch_ids[j])
-                            
-                            if enrichment.strip():
-                                # Create the enhanced text by combining original with enrichment
-                                enhanced_text = f"{doc}\n\nENRICHMENT:\n{enrichment}"
-                                
-                                # Use the enhanced text for embedding
-                                processing_text = enhanced_text
-                                
-                                # Store both original and enrichment in metadata
-                                metadata["has_enrichment"] = True
-                                metadata["enrichment"] = enrichment
-                                
-                                print(f"Enhanced chunk {batch_ids[j]} with semantic enrichment (+{len(enrichment)} chars)")
-                        except Exception as e:
-                            print(f"Error generating enrichment for {batch_ids[j]}: {e}")
-                            # Continue with original text on error
-                            metadata["has_enrichment"] = False
-                            metadata["enrichment_error"] = str(e)
-                    else:
-                        metadata["has_enrichment"] = False
-                        
-                    # Attempt to generate embedding
-                    print(f"Processing chunk {batch_ids[j]} ({len(processing_text)} chars)")
-                    embedding = ollama_client.generate_embedding(processing_text)
-                    
-                    # Verify embedding is valid (not None and has values)
-                    if embedding is None or len(embedding) == 0:
-                        raise ValueError("Empty embedding returned")
-                        
-                    batch_embeddings.append(embedding)
-                    valid_docs.append(processing_text)  # Store the enhanced text
-                    valid_ids.append(batch_ids[j])
-                    
-                    # Add the custom metadata to our metadatas list
-                    valid_metadatas.append(metadata)
-                except Exception as e:
-                    print(f"Error generating embedding for {batch_ids[j]}: {e}")
-                    failed += 1
-                    failed_files.append(f"{batch_ids[j]} ({str(e)})")
-            
-            # Update our batch to only include documents with valid embeddings
-            batch_docs = valid_docs
-            batch_ids = valid_ids
-            
-            # Skip to next batch if all embeddings failed
-            if not batch_embeddings:
-                continue
-                
-            # Create metadata with source file information
-            # Use our valid_metadatas that already contains enrichment info
-            final_metadatas = []
-            
-            # Add source file information to each metadata entry
-            for i, chunk_id in enumerate(valid_ids):
-                # Get the base metadata with enrichment info that was already created
-                metadata = valid_metadatas[i]
-                
-                # Add source file information
-                if "#chunk-" in chunk_id:
-                    source_file = chunk_id.split("#chunk-")[0]
-                    chunk_num = chunk_id.split("#chunk-")[1]
-                    metadata["filename"] = source_file
-                    metadata["chunk_id"] = chunk_id
-                    metadata["chunk_num"] = chunk_num
-                else:
-                    # No chunks, just the file
-                    metadata["filename"] = chunk_id
-                    
-                final_metadatas.append(metadata)
-            
-            # Add to ChromaDB - use valid_docs which contains the enhanced text
-            db_collection.add(
-                ids=valid_ids,
-                embeddings=batch_embeddings,
-                metadatas=final_metadatas,
-                documents=valid_docs
-            )
-            
-            successful += len(batch_embeddings)
-            print(f"Added batch: {len(batch_embeddings)} chunks")
-            
-        except Exception as e:
-            print(f"Error processing batch: {e}")
-            failed += len(batch_docs)
-            failed_files.extend(batch_ids)
-    
-    # After processing documents, refresh the domain terms
     try:
-        # Get document count before refresh
-        prev_term_count = len(query_classifier.product_terms)
+        # Update job status to processing
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_PROCESSING
         
-        # Refresh terms from ChromaDB
-        query_classifier.update_terms_from_db(db_collection)
+        # Apply overrides if provided without modifying globals
+        temp_max_chunk_size = chunk_size if chunk_size is not None else MAX_CHUNK_SIZE
+        temp_min_chunk_size = min_size if min_size is not None else MIN_CHUNK_SIZE
+        temp_chunk_overlap = overlap if overlap is not None else CHUNK_OVERLAP
+        temp_enable_chunking = enable_chunking if enable_chunking is not None else ENABLE_CHUNKING
         
-        # Get updated term count
-        new_term_count = len(query_classifier.product_terms)
-        term_update_status = {
-            "previous_term_count": prev_term_count,
-            "new_term_count": new_term_count,
-            "terms_updated": True
+        # Log if semantic enrichment is enabled
+        if enhance_chunks:
+            print(f"Job {job_id}: Semantic chunk enrichment is ENABLED")
+        
+        # Log chunking settings for this run
+        print(f"Job {job_id}: Using chunking settings:")
+        print(f"  ENABLE_CHUNKING: {temp_enable_chunking}")
+        print(f"  MAX_CHUNK_SIZE: {temp_max_chunk_size} chars")
+        print(f"  MIN_CHUNK_SIZE: {temp_min_chunk_size} chars")
+        print(f"  CHUNK_OVERLAP: {temp_chunk_overlap} chars")
+        
+        # Function to process files recursively
+        def process_directory(directory):
+            for filename in os.listdir(directory):
+                file_path = os.path.join(directory, filename)
+                if os.path.isdir(file_path):
+                    # Recursively process subdirectories
+                    process_directory(file_path)
+                elif os.path.isfile(file_path) and file_path.endswith('.md'):
+                    source_files.append(file_path)  # Track all source files for reporting
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                            # Use relative path as identifier
+                            rel_path = os.path.relpath(file_path, DOCS_FOLDER)
+                            
+                            # Apply chunking with temp settings
+                            try:
+                                # Create a temporary document processor with custom settings
+                                temp_processor = DocumentProcessor(
+                                    max_chunk_size=temp_max_chunk_size,
+                                    min_chunk_size=temp_min_chunk_size,
+                                    chunk_overlap=temp_chunk_overlap,
+                                    enable_chunking=temp_enable_chunking
+                                )
+                                
+                                # Use the document processor with temporary settings
+                                chunks = temp_processor.chunk_document(content, rel_path)
+                                
+                                # Add chunks to our collection
+                                for chunk_text, chunk_id in chunks:
+                                    all_chunks.append(chunk_text)
+                                    all_chunk_ids.append(chunk_id)
+                                    
+                                # Update progress
+                                with job_lock:
+                                    processing_jobs[job_id]["processed_files"] += 1
+                                    processing_jobs[job_id]["progress"] = int(len(source_files) > 0 and (processing_jobs[job_id]["processed_files"] / len(source_files)) * 100)
+                            finally:
+                                # Nothing to restore as we're not modifying globals anymore
+                                pass
+                    except Exception as e:
+                        print(f"Job {job_id}: Error reading file {file_path}: {e}")
+                        failed_files.append(f"{file_path} ({str(e)})")
+                        
+                        # Update progress for failed file
+                        with job_lock:
+                            processing_jobs[job_id]["processed_files"] += 1
+                            processing_jobs[job_id]["progress"] = int(len(source_files) > 0 and (processing_jobs[job_id]["processed_files"] / len(source_files)) * 100)
+        
+        # Process all files recursively
+        process_directory(DOCS_FOLDER)
+        
+        # Update total files count
+        with job_lock:
+            processing_jobs[job_id]["total_files"] = len(source_files)
+        
+        if not all_chunks:
+            with job_lock:
+                processing_jobs[job_id]["status"] = JOB_STATUS_FAILED
+                processing_jobs[job_id]["error"] = "No documents to process"
+            return
+        
+        print(f"Job {job_id}: Processing {len(all_chunks)} chunks from {len(source_files)} source files")
+        
+        # Process chunks in batches to avoid memory issues
+        batch_size = 5
+        
+        for i in range(0, len(all_chunks), batch_size):
+            batch_docs = all_chunks[i:i+batch_size]
+            batch_ids = all_chunk_ids[i:i+batch_size]
+            
+            try:
+                # Generate embeddings for the current batch - use a safer approach to handle errors
+                batch_embeddings = []
+                valid_docs = []
+                valid_ids = []
+                valid_metadatas = []
+                
+                for j, doc in enumerate(batch_docs):
+                    try:
+                        # Skip empty documents
+                        if not doc.strip():
+                            print(f"Job {job_id}: Skipping empty chunk: {batch_ids[j]}")
+                            failed += 1
+                            failed_files.append(f"{batch_ids[j]} (empty)")
+                            continue
+                        
+                        # Determine whether to use original or enriched text for embedding
+                        processing_text = doc
+                        metadata = {"original_text": doc}
+                        
+                        # Generate semantic enrichment if enabled
+                        if enhance_chunks:
+                            try:
+                                # Generate enrichment for the chunk
+                                enrichment = ollama_client.generate_semantic_enrichment(doc, batch_ids[j])
+                                
+                                if enrichment.strip():
+                                    # Create the enhanced text by combining original with enrichment
+                                    enhanced_text = f"{doc}\n\nENRICHMENT:\n{enrichment}"
+                                    
+                                    # Use the enhanced text for embedding
+                                    processing_text = enhanced_text
+                                    
+                                    # Store both original and enrichment in metadata
+                                    metadata["has_enrichment"] = True
+                                    metadata["enrichment"] = enrichment
+                                    
+                                    print(f"Job {job_id}: Enhanced chunk {batch_ids[j]} with semantic enrichment (+{len(enrichment)} chars)")
+                            except Exception as e:
+                                print(f"Job {job_id}: Error generating enrichment for {batch_ids[j]}: {e}")
+                                # Continue with original text on error
+                                metadata["has_enrichment"] = False
+                                metadata["enrichment_error"] = str(e)
+                        else:
+                            metadata["has_enrichment"] = False
+                            
+                        # Attempt to generate embedding
+                        print(f"Job {job_id}: Processing chunk {batch_ids[j]} ({len(processing_text)} chars)")
+                        embedding = ollama_client.generate_embedding(processing_text)
+                        
+                        # Verify embedding is valid (not None and has values)
+                        if embedding is None or len(embedding) == 0:
+                            raise ValueError("Empty embedding returned")
+                            
+                        batch_embeddings.append(embedding)
+                        valid_docs.append(processing_text)  # Store the enhanced text
+                        valid_ids.append(batch_ids[j])
+                        
+                        # Add the custom metadata to our metadatas list
+                        valid_metadatas.append(metadata)
+                        
+                        # Update successful count
+                        successful += 1
+                        with job_lock:
+                            processing_jobs[job_id]["successful_chunks"] = successful
+                            
+                    except Exception as e:
+                        print(f"Job {job_id}: Error generating embedding for {batch_ids[j]}: {e}")
+                        failed += 1
+                        failed_files.append(f"{batch_ids[j]} ({str(e)})")
+                        
+                        # Update failed count
+                        with job_lock:
+                            processing_jobs[job_id]["failed_chunks"] = failed
+                
+                # Skip to next batch if all embeddings failed
+                if not batch_embeddings:
+                    continue
+                    
+                # Create metadata with source file information
+                # Use our valid_metadatas that already contains enrichment info
+                final_metadatas = []
+                
+                # Add source file information to each metadata entry
+                for i, chunk_id in enumerate(valid_ids):
+                    # Get the base metadata with enrichment info that was already created
+                    metadata = valid_metadatas[i]
+                    
+                    # Add source file information
+                    if "#chunk-" in chunk_id:
+                        source_file = chunk_id.split("#chunk-")[0]
+                        chunk_num = chunk_id.split("#chunk-")[1]
+                        metadata["filename"] = source_file
+                        metadata["chunk_id"] = chunk_id
+                        metadata["chunk_num"] = chunk_num
+                    else:
+                        # No chunks, just the file
+                        metadata["filename"] = chunk_id
+                        
+                    final_metadatas.append(metadata)
+                
+                # Add to ChromaDB - use valid_docs which contains the enhanced text
+                db_collection.add(
+                    ids=valid_ids,
+                    embeddings=batch_embeddings,
+                    metadatas=final_metadatas,
+                    documents=valid_docs
+                )
+                
+                print(f"Job {job_id}: Added batch: {len(batch_embeddings)} chunks")
+                
+            except Exception as e:
+                print(f"Job {job_id}: Error processing batch: {e}")
+                failed += len(batch_docs)
+                failed_files.extend(batch_ids)
+                
+                # Update failed count
+                with job_lock:
+                    processing_jobs[job_id]["failed_chunks"] = failed
+        
+        # After processing documents, refresh the domain terms
+        term_update_status = None
+        try:
+            # Get document count before refresh
+            prev_term_count = len(query_classifier.product_terms)
+            
+            # Refresh terms from ChromaDB
+            query_classifier.update_terms_from_db(db_collection)
+            
+            # Get updated term count
+            new_term_count = len(query_classifier.product_terms)
+            term_update_status = {
+                "previous_term_count": prev_term_count,
+                "new_term_count": new_term_count,
+                "terms_updated": True
+            }
+        except Exception as e:
+            print(f"Job {job_id}: Error refreshing domain terms: {e}")
+            term_update_status = {
+                "terms_updated": False,
+                "error": str(e)
+            }
+        
+        # Prepare enrichment status information
+        enrichment_status = {
+            "enabled": enhance_chunks,
+            "chunks_processed": successful
         }
-    except Exception as e:
-        print(f"Error refreshing domain terms: {e}")
-        term_update_status = {
-            "terms_updated": False,
-            "error": str(e)
-        }
-    
-    # Prepare enrichment status information
-    enrichment_status = {
-        "enabled": enhance_chunks,
-        "chunks_processed": successful
-    }
-    
-    # Return detailed status
-    if failed > 0:
-        return {
-            "message": "Documents processed with some errors",
+        
+        # Prepare result for completion
+        result = {
+            "message": "All documents processed successfully" if failed == 0 else "Documents processed with some errors",
             "source_files": len(source_files),
             "total_chunks": len(all_chunks),
             "successful_chunks": successful,
             "failed_chunks": failed,
-            "failed_items": failed_files,
+            "failed_items": failed_files if failed > 0 else None,
             "chunking_enabled": temp_enable_chunking,
             "chunk_size": temp_max_chunk_size,
             "term_extraction": term_update_status,
             "semantic_enrichment": enrichment_status
         }
-    else:
-        return {
-            "message": "All documents processed successfully",
-            "source_files": len(source_files),
-            "total_chunks": len(all_chunks),
-            "successful_chunks": successful,
-            "chunking_enabled": temp_enable_chunking,
-            "chunk_size": temp_max_chunk_size,
-            "term_extraction": term_update_status,
-            "semantic_enrichment": enrichment_status
-        }
+        
+        # Update job status to completed
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_COMPLETED
+            processing_jobs[job_id]["progress"] = 100
+            processing_jobs[job_id]["result"] = result
+            
+        print(f"Job {job_id}: Processing completed - {successful} chunks processed, {failed} failed")
+            
+    except Exception as e:
+        error_message = f"Error in document processing: {str(e)}"
+        print(f"Job {job_id}: {error_message}")
+        
+        # Update job status to failed
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_FAILED
+            processing_jobs[job_id]["error"] = error_message
+            processing_jobs[job_id]["result"] = {
+                "message": "Document processing failed",
+                "error": error_message,
+                "source_files": len(source_files),
+                "total_chunks": len(all_chunks),
+                "successful_chunks": successful,
+                "failed_chunks": failed
+            }
 
 @app.get("/query", summary="Retrieve relevant documents", description="Query ChromaDB for the most relevant document based on input text.")
 async def query_documents(
@@ -743,6 +855,22 @@ async def refresh_domain_terms():
             "status": "error",
             "message": f"Error refreshing domain terms: {str(e)}"
         }
+
+@app.get("/job/{job_id}", summary="Get job status", description="Check the status of a document processing job.")
+async def get_job_status(job_id: str):
+    """Get the status of a document processing job"""
+    if job_id not in processing_jobs:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+    return processing_jobs[job_id]
+
+@app.get("/jobs", summary="List all jobs", description="List all document processing jobs.")
+async def list_jobs():
+    """List all document processing jobs"""
+    return {
+        "total_jobs": len(processing_jobs),
+        "jobs": processing_jobs
+    }
 
 @app.get("/terms", summary="List domain terms", description="List the domain-specific terms used for query classification.")
 async def list_domain_terms():
