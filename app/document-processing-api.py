@@ -1283,18 +1283,11 @@ async def list_document_chunks(
                 "total": 0
             }
             
-        # Build query parameters
-        where_clause = {}
-        
-        # Add filename filter if provided
-        if filename:
-            where_clause["filename"] = {"$like": f"%{filename}%"}
-            
-        # Create the query to get chunks
+        # Create the query to get chunks - we'll filter programmatically instead of using where clause
+        # because ChromaDB doesn't support partial matching with $like operator
         query_results = db_collection.get(
-            limit=limit,
-            offset=offset,
-            where=where_clause if where_clause else None,
+            limit=limit if not filename else doc_count,  # Get all if filtering by filename
+            offset=offset if not filename else 0,       # Start from beginning if filtering
             include=["documents", "metadatas", "embeddings"]
         )
         
@@ -1302,7 +1295,12 @@ async def list_document_chunks(
         chunks = []
         for i, doc in enumerate(query_results["documents"]):
             metadata = query_results["metadatas"][i] if "metadatas" in query_results else {}
+            file_name = metadata.get("filename", "unknown")
             
+            # Skip if filename filter is provided and doesn't match (case-insensitive partial match)
+            if filename and filename.lower() not in file_name.lower():
+                continue
+                
             # Skip if content filter is provided and doesn't match
             if content and content.lower() not in doc.lower():
                 continue
@@ -1317,18 +1315,27 @@ async def list_document_chunks(
             chunks.append({
                 "id": query_results["ids"][i],
                 "text": original_text,
-                "filename": metadata.get("filename", "unknown"),
+                "filename": file_name,
                 "has_enrichment": has_enrichment,
                 "enrichment": enrichment if has_enrichment else "",
                 "embedding_dimension": len(query_results["embeddings"][i]) if "embeddings" in query_results else 0
             })
         
+        # Apply pagination after filtering if needed
+        # Only needed when we're doing client-side filtering by filename
+        paginated_chunks = chunks
+        if filename and len(chunks) > limit:
+            start_idx = min(offset, len(chunks))
+            end_idx = min(start_idx + limit, len(chunks))
+            paginated_chunks = chunks[start_idx:end_idx]
+        
         # Return the results
         return {
             "status": "success",
             "total_in_db": doc_count,
-            "chunks_returned": len(chunks),
-            "chunks": chunks
+            "total_matching": len(chunks),
+            "chunks_returned": len(paginated_chunks),
+            "chunks": paginated_chunks
         }
     except Exception as e:
         print(f"Error retrieving chunks: {e}")
