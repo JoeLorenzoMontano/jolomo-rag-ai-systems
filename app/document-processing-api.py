@@ -1226,8 +1226,34 @@ async def clear_database():
         # Get current document count for reporting
         doc_count = db_collection.count()
         
-        # Clear the collection
-        db_collection.delete(where={})
+        if doc_count > 0:
+            # Get all document IDs
+            results = db_collection.get(include=[])
+            
+            if results and "ids" in results and results["ids"]:
+                # Delete all documents by ID
+                db_collection.delete(ids=results["ids"])
+                print(f"Deleted {len(results['ids'])} documents")
+            else:
+                # Fallback method: recreate the collection
+                try:
+                    # First try to delete the entire collection
+                    chroma_client.delete_collection("documents")
+                    print("Collection deleted")
+                    
+                    # Then recreate it
+                    global db_collection
+                    db_collection = chroma_client.create_collection(
+                        name="documents",
+                        metadata={"description": "Main document collection for RAG processing"}
+                    )
+                    print("Collection recreated")
+                except Exception as inner_e:
+                    print(f"Error during collection recreation: {inner_e}")
+                    return {
+                        "status": "error",
+                        "message": f"Error clearing database: {str(inner_e)}"
+                    }
         
         # Refresh the domain terms to reflect the empty database
         try:
