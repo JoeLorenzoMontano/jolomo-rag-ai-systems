@@ -116,8 +116,9 @@ class QueryClassifier:
         except Exception as e:
             self.logger.warning(f"Could not filter stopwords: {e}")
         
-        # Filter out short words
-        words = [word for word in words if len(word) >= min_length]
+        # Filter out short words and image file references
+        words = [word for word in words if len(word) >= min_length and 
+                 not any(ext in word for ext in ['png', 'jpg', 'jpeg', 'gif'])]
         
         # Count word frequencies
         word_counts = Counter(words)
