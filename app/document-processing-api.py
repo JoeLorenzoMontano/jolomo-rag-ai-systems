@@ -146,10 +146,10 @@ doc_processor = DocumentProcessor(
 )
 
 # Initialize Query Classifier for determining when to use web search
-# Pass the ChromaDB collection to extract domain-specific terms, but postpone term extraction until we have ollama_client
+# Initialize the query classifier for determining when to use web search versus document search
 query_classifier = QueryClassifier(confidence_threshold=0.6)
 
-# Initialize the domain terms from the database after both the classifier and Ollama client are initialized
+# Set default domain terms - these will be updated from the database when documents are processed
 try:
     query_classifier.product_terms = ["duplocloud", "tenant", "infrastructure"]  # Default terms
 except Exception as e:
@@ -260,9 +260,9 @@ async def health_check():
                 if (health_status["collection"]["document_count"] > 0 and 
                     len(query_classifier.product_terms) <= 3):  # Only default terms
                     try:
-                        print("Initializing domain terms with Ollama during health check")
-                        query_classifier.update_terms_from_db(db_collection, ollama_client)
-                        print(f"Domain terms initialized: {len(query_classifier.product_terms)} terms extracted")
+                        print("Initializing domain terms using statistical extraction during health check")
+                        query_classifier.update_terms_from_db(db_collection)
+                        print(f"Domain terms initialized: {len(query_classifier.product_terms)} terms extracted using statistical approach")
                     except Exception as e:
                         print(f"Failed to initialize domain terms: {e}")
         except Exception as e:
@@ -528,22 +528,22 @@ def process_documents_task(
         
         print(f"Job {job_id}: Processed {len(all_chunks)} chunks from {len(source_files)} source files")
         
-        # After processing documents, refresh the domain terms using LLM
+        # After processing documents, refresh the domain terms using statistical approach
         term_update_status = None
         try:
             # Get document count before refresh
             prev_term_count = len(query_classifier.product_terms)
             
-            # Use LLM-powered extraction via Ollama
-            print(f"Job {job_id}: Refreshing domain terms using LLM extraction")
-            query_classifier.update_terms_from_db(db_collection, ollama_client)
+            # Use statistical extraction with NLTK
+            print(f"Job {job_id}: Refreshing domain terms using statistical extraction")
+            query_classifier.update_terms_from_db(db_collection)
             
             # Get updated term count
             new_term_count = len(query_classifier.product_terms)
             term_update_status = {
                 "previous_term_count": prev_term_count,
                 "new_term_count": new_term_count,
-                "extraction_method": "LLM-powered",
+                "extraction_method": "statistical",
                 "terms_updated": True,
                 "sample_terms": query_classifier.product_terms[:10] if query_classifier.product_terms else []
             }
@@ -837,7 +837,7 @@ async def query_documents(
 
 @app.post("/refresh-terms", summary="Refresh domain terms", description="Refreshes the domain-specific terms used for query classification based on current document content.")
 async def refresh_domain_terms(background_tasks: BackgroundTasks):
-    """Refresh the domain-specific terms used in query classification using LLM extraction"""
+    """Refresh the domain-specific terms used in query classification using statistical extraction"""
     try:
         # Get document count before refresh
         prev_term_count = len(query_classifier.product_terms)
@@ -875,7 +875,7 @@ async def refresh_domain_terms(background_tasks: BackgroundTasks):
         }
 
 def refresh_domain_terms_background_task(job_id: str):
-    """Background task for refreshing domain terms using LLM"""
+    """Background task for refreshing domain terms using statistical approach"""
     try:
         # Update job status to processing
         with job_lock:
@@ -885,15 +885,15 @@ def refresh_domain_terms_background_task(job_id: str):
         # Get document count before refresh
         prev_term_count = len(query_classifier.product_terms)
         
-        # Refresh terms from ChromaDB using Ollama
-        print(f"Job {job_id}: Using Ollama for domain term extraction")
+        # Refresh terms from ChromaDB using statistical extraction
+        print(f"Job {job_id}: Using statistical approach for domain term extraction")
         
         # Update progress
         with job_lock:
             processing_jobs[job_id]["progress"] = 30
         
         # Do the actual term extraction
-        query_classifier.update_terms_from_db(db_collection, ollama_client)
+        query_classifier.update_terms_from_db(db_collection)
         
         # Update progress
         with job_lock:
@@ -904,8 +904,8 @@ def refresh_domain_terms_background_task(job_id: str):
         
         # Prepare result
         result = {
-            "message": "Domain terms refreshed successfully using LLM-powered extraction",
-            "extraction_method": "LLM-powered",
+            "message": "Domain terms refreshed successfully using statistical extraction",
+            "extraction_method": "statistical",
             "previous_term_count": prev_term_count,
             "new_term_count": new_term_count,
             "sample_terms": query_classifier.product_terms[:20]  # Show first 20 terms as a sample
@@ -1254,22 +1254,22 @@ def process_single_file_task(job_id: str, file_path: str):
                 with job_lock:
                     processing_jobs[job_id]["failed_chunks"] = failed
         
-        # Update domain terms using LLM
+        # Update domain terms using statistical approach
         term_update_status = None
         try:
             # Get document count before refresh
             prev_term_count = len(query_classifier.product_terms)
             
-            # Use LLM-powered extraction via Ollama
-            print(f"Job {job_id}: Refreshing domain terms using LLM extraction")
-            query_classifier.update_terms_from_db(db_collection, ollama_client)
+            # Use statistical extraction with NLTK
+            print(f"Job {job_id}: Refreshing domain terms using statistical extraction")
+            query_classifier.update_terms_from_db(db_collection)
             
             # Get updated term count
             new_term_count = len(query_classifier.product_terms)
             term_update_status = {
                 "previous_term_count": prev_term_count,
                 "new_term_count": new_term_count,
-                "extraction_method": "LLM-powered",
+                "extraction_method": "statistical",
                 "terms_updated": True,
                 "sample_terms": query_classifier.product_terms[:10] if query_classifier.product_terms else []
             }
