@@ -6,23 +6,11 @@ This module provides endpoints for querying the document database.
 
 from fastapi import APIRouter, HTTPException, Depends, Query as QueryParam
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
 
 from core.dependencies import get_query_service
+from models.schemas import ChatMessage, ChatRequest
 
 router = APIRouter(tags=["query"])
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
-    n_results: int = 3
-    combine_chunks: bool = True
-    web_search: Optional[bool] = None
-    web_results_count: int = 3
-    enhance_query: bool = True
 
 @router.get("/query", summary="Retrieve relevant documents", 
            description="Query for the most relevant document based on input text.")

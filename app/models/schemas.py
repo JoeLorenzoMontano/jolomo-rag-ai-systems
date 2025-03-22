@@ -61,3 +61,19 @@ class FileUploadResponse(BaseModel):
     file_path: str = Field(description="Path to the saved file")
     job_id: Optional[str] = Field(None, description="Job ID if processing was started")
     processing_status: Optional[str] = Field(None, description="Status of processing if started")
+
+
+class ChatMessage(BaseModel):
+    """Schema for a chat message."""
+    role: str = Field(description="Role of the message sender (user or assistant)")
+    content: str = Field(description="Content of the message")
+
+
+class ChatRequest(BaseModel):
+    """Schema for a chat request with conversation history."""
+    messages: List[ChatMessage] = Field(description="List of chat messages in the conversation")
+    n_results: int = Field(3, description="Number of results to return")
+    combine_chunks: bool = Field(True, description="Whether to combine chunks from the same document")
+    web_search: Optional[bool] = Field(None, description="Whether to use web search (auto if None)")
+    web_results_count: int = Field(3, description="Number of web search results to include")
+    enhance_query: bool = Field(True, description="Whether to enhance the query for better retrieval")
