@@ -42,9 +42,6 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 5. Wait for all services to initialize (this may take a few minutes on first run due to the models needing to be downloaded)
 6. Access the web interface at http://localhost:5000
 7. Start querying immediately! ChromaDB comes pre-populated with embeddings for the documents in the `rag-documents` directory
-8. (Optional) Process additional documents:
-   - Go to http://localhost:5000/process and click "Process Documents", or
-   - Use API directly: `curl -X POST http://localhost:8000/process`
 
 ### Accessing the Services
 
