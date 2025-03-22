@@ -26,13 +26,13 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 
 1. Clone this repository
 2. Navigate to the project directory
-3. (Optional) Create a `.env` file for configuration:
+3. (Optional) Create a `.env` file for configuration (or copy from `.env.sample`):
    ```
-   # Ollama Settings
+   # Ollama Model Settings
    MODEL=llama3:latest
    EMBEDDING_MODEL=all-minilm:l6-v2
    
-   # For web search (optional)
+   # Web Search Integration 
    SERPER_API_KEY=your_serper_api_key_here
    ```
 4. Start all services:
