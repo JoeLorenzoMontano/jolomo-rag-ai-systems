@@ -62,11 +62,6 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 - **API Documentation**: http://localhost:8000/docs
 - **ChromaDB**: http://localhost:8001 (direct database access)
 - **Ollama**: http://localhost:11434 (LLM server)
-### API Documentation
-
-For detailed information about all available API endpoints and their parameters, please visit the OpenAPI documentation at:
-
-**API Documentation**: http://localhost:8000/docs
 
 ## Ollama Setup Options
 
@@ -95,10 +90,3 @@ docker-compose -f docker-compose.docker.ollama.yml up -d
 ```
 
 **Important**: This approach is significantly slower, especially on CPU-only machines, and is not recommended for reviewers who want to experience the system's optimal performance.
-
-## Key Features
-
-- **Smart Document Chunking**: Automatically splits documents into semantic chunks for optimal retrieval
-- **Query Classification**: Intelligently determines when to use documents vs. web search
-- **Conversation Memory**: Maintains context for natural follow-up questions
-- **Web Search Integration**: Optional integration with internet search for questions outside your document scope
