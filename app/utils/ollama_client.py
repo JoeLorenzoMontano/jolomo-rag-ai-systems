@@ -157,20 +157,18 @@ class OllamaClient:
             
         try:
             # Use a condensed prompt to save tokens
-            prompt = f"""Enhance this query for better document retrieval results:
+            prompt = f"""You are a search optimization assistant. Your only task is to enhance this query for better document retrieval:
             "{original_query}"
             
-            Follow these rules:
-            1. Expand acronyms and abbreviations
-            2. Include alternative terms for key concepts
-            3. Remove possessives (e.g., change "Joe's" to "Joe")
-            4. Normalize contractions (e.g., change "don't" to "do not")
-            5. Identify implied questions that aren't directly stated
-            6. Keep the enhanced query concise (max 3 sentences)
-            7. Maintain all important search terms from the original
-            8. Format as a single, more effective search query
+            Instructions:
+            - Expand acronyms and technical terms
+            - Include synonyms for key concepts
+            - Focus on adding relevant technical terms
+            - Preserve the original meaning
+            - DO NOT include phrases like "Here is the enhanced query" or any meta-commentary
+            - Respond ONLY with the enhanced query text itself
 
-            Respond with ONLY the enhanced query text. No explanations.
+            IMPORTANT: Your complete response must be ONLY the enhanced search query with no other text.
             """
             
             # Use a fast response with the current model
@@ -193,6 +191,28 @@ class OllamaClient:
             # Remove quotes if the model included them
             enhanced_query = enhanced_query.strip('"\'')
             
+            # Filter out common prefixes that LLMs like to add
+            prefixes_to_remove = [
+                "Here is the enhanced query:",
+                "Enhanced query:",
+                "The enhanced query is:",
+                "Sure! Here is",
+                "Here's the enhanced",
+                "Enhanced search query:",
+                "Search query:"
+            ]
+            
+            for prefix in prefixes_to_remove:
+                if enhanced_query.startswith(prefix):
+                    enhanced_query = enhanced_query[len(prefix):].strip()
+            
+            # Remove any remaining quotes from the beginning/end
+            enhanced_query = enhanced_query.strip('"\'')
+            
+            # If the query became empty after cleaning or is too short, return original
+            if not enhanced_query or len(enhanced_query) < 5:
+                return original_query
+                
             return enhanced_query
         except Exception as e:
             print(f"Error enhancing query: {e}")
