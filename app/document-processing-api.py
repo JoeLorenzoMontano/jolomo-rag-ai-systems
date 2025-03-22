@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Query, BackgroundTasks, UploadFile, File, Form
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Tuple, Optional
@@ -10,6 +10,9 @@ import os
 import re
 import requests
 import time as import_time
+import shutil
+import io
+import PyPDF2
 from utils.ollama_client import OllamaClient
 from utils.web_search import WebSearchClient
 from utils.document_processor import DocumentProcessor
@@ -885,6 +888,358 @@ async def list_domain_terms():
         return {
             "status": "error",
             "message": f"Error listing domain terms: {str(e)}"
+        }
+
+@app.post("/upload-file", summary="Upload a file", description="Upload a file (txt or PDF) to be processed.")
+async def upload_file(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
+    process_immediately: bool = Form(False)
+):
+    """Upload a file (txt or PDF) to be processed"""
+    try:
+        # Check if file is empty
+        contents = await file.read()
+        if not contents:
+            return {
+                "status": "error",
+                "message": "File is empty"
+            }
+        
+        # Reset file position after reading
+        await file.seek(0)
+        
+        # Check file type
+        if not (file.filename.endswith('.txt') or file.filename.endswith('.pdf')):
+            return {
+                "status": "error",
+                "message": "Only .txt and .pdf files are supported"
+            }
+            
+        # Create the docs directory if it doesn't exist
+        os.makedirs(DOCS_FOLDER, exist_ok=True)
+        
+        # Generate a safe filename to prevent path traversal
+        safe_filename = re.sub(r'[^\w\-\.]', '_', file.filename)
+        file_path = os.path.join(DOCS_FOLDER, safe_filename)
+        
+        # Save the file
+        with open(file_path, "wb") as buffer:
+            # Reset the file pointer to the beginning
+            await file.seek(0)
+            # Copy the contents to the destination file
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Process PDF files by extracting text
+        if file.filename.endswith('.pdf'):
+            try:
+                # Extract text from PDF
+                pdf_text = ""
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(contents))
+                
+                for page_num in range(len(pdf_reader.pages)):
+                    pdf_text += pdf_reader.pages[page_num].extract_text() + "\n\n"
+                
+                # Save the extracted text to a markdown file
+                md_filename = safe_filename.replace('.pdf', '.md')
+                md_path = os.path.join(DOCS_FOLDER, md_filename)
+                
+                with open(md_path, "w", encoding="utf-8") as md_file:
+                    md_file.write(pdf_text)
+                
+                # Use the markdown file for processing instead
+                file_path = md_path
+                
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Error processing PDF file: {str(e)}"
+                }
+                
+        # If the file is a text file, convert it to markdown
+        elif file.filename.endswith('.txt'):
+            try:
+                # Read the text file
+                with open(file_path, "r", encoding="utf-8") as txt_file:
+                    txt_content = txt_file.read()
+                
+                # Save as markdown
+                md_filename = safe_filename.replace('.txt', '.md')
+                md_path = os.path.join(DOCS_FOLDER, md_filename)
+                
+                with open(md_path, "w", encoding="utf-8") as md_file:
+                    md_file.write(txt_content)
+                
+                # Use the markdown file for processing
+                file_path = md_path
+                
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Error converting text file to markdown: {str(e)}"
+                }
+        
+        result = {
+            "status": "success",
+            "message": f"File uploaded successfully: {file.filename}",
+            "file_path": file_path
+        }
+        
+        # Process the file immediately if requested
+        if process_immediately and background_tasks:
+            # Create a unique job ID
+            job_id = str(uuid.uuid4())
+            
+            # Set up initial job status
+            with job_lock:
+                processing_jobs[job_id] = {
+                    "status": JOB_STATUS_QUEUED,
+                    "progress": 0,
+                    "total_files": 1,
+                    "processed_files": 0,
+                    "successful_chunks": 0,
+                    "failed_chunks": 0,
+                    "error": None,
+                    "settings": {
+                        "chunk_size": MAX_CHUNK_SIZE,
+                        "min_size": MIN_CHUNK_SIZE,
+                        "overlap": CHUNK_OVERLAP,
+                        "enable_chunking": ENABLE_CHUNKING,
+                        "enhance_chunks": True,
+                        "file_path": file_path
+                    },
+                    "result": None
+                }
+            
+            # Add the background task to process just this file
+            background_tasks.add_task(
+                process_single_file_task,
+                job_id=job_id,
+                file_path=file_path
+            )
+            
+            # Add job information to the result
+            result["job_id"] = job_id
+            result["processing_status"] = "queued"
+            result["message"] += " and queued for processing"
+        
+        return result
+        
+    except Exception as e:
+        print(f"Error uploading file: {e}")
+        return {
+            "status": "error",
+            "message": f"Error uploading file: {str(e)}"
+        }
+
+def process_single_file_task(job_id: str, file_path: str):
+    """Background task to process a single uploaded file"""
+    try:
+        # Update job status to processing
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_PROCESSING
+            processing_jobs[job_id]["progress"] = 10
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            with job_lock:
+                processing_jobs[job_id]["status"] = JOB_STATUS_FAILED
+                processing_jobs[job_id]["error"] = f"File not found: {file_path}"
+            return
+            
+        # Track results
+        successful = 0
+        failed = 0
+        all_chunks = []
+        all_chunk_ids = []
+        
+        print(f"Job {job_id}: Processing single file: {file_path}")
+        
+        try:
+            # Read the file
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                
+                # Use relative path as identifier
+                rel_path = os.path.relpath(file_path, DOCS_FOLDER)
+                
+                # Apply chunking
+                chunks = doc_processor.chunk_document(content, rel_path)
+                
+                # Add chunks to our collection
+                for chunk_text, chunk_id in chunks:
+                    all_chunks.append(chunk_text)
+                    all_chunk_ids.append(chunk_id)
+                
+                # Update progress
+                with job_lock:
+                    processing_jobs[job_id]["processed_files"] = 1
+                    processing_jobs[job_id]["progress"] = 30
+                    
+        except Exception as e:
+            print(f"Job {job_id}: Error reading file {file_path}: {e}")
+            with job_lock:
+                processing_jobs[job_id]["status"] = JOB_STATUS_FAILED
+                processing_jobs[job_id]["error"] = f"Error reading file: {str(e)}"
+            return
+                
+        if not all_chunks:
+            with job_lock:
+                processing_jobs[job_id]["status"] = JOB_STATUS_FAILED
+                processing_jobs[job_id]["error"] = "No content could be chunked from the file"
+            return
+        
+        print(f"Job {job_id}: Created {len(all_chunks)} chunks from file")
+        with job_lock:
+            processing_jobs[job_id]["progress"] = 50
+        
+        # Process chunks
+        for i, chunk_text in enumerate(all_chunks):
+            try:
+                # Skip empty chunks
+                if not chunk_text.strip():
+                    print(f"Job {job_id}: Skipping empty chunk: {all_chunk_ids[i]}")
+                    failed += 1
+                    continue
+                
+                # Determine whether to use original or enriched text for embedding
+                processing_text = chunk_text
+                metadata = {"original_text": chunk_text}
+                
+                # Generate semantic enrichment
+                try:
+                    # Generate enrichment for the chunk
+                    enrichment = ollama_client.generate_semantic_enrichment(chunk_text, all_chunk_ids[i])
+                    
+                    if enrichment.strip():
+                        # Create the enhanced text by combining original with enrichment
+                        enhanced_text = f"{chunk_text}\n\nENRICHMENT:\n{enrichment}"
+                        
+                        # Use the enhanced text for embedding
+                        processing_text = enhanced_text
+                        
+                        # Store both original and enrichment in metadata
+                        metadata["has_enrichment"] = True
+                        metadata["enrichment"] = enrichment
+                        
+                        print(f"Job {job_id}: Enhanced chunk {all_chunk_ids[i]} with semantic enrichment")
+                except Exception as e:
+                    print(f"Job {job_id}: Error generating enrichment: {e}")
+                    metadata["has_enrichment"] = False
+                    metadata["enrichment_error"] = str(e)
+                
+                # Generate embedding
+                print(f"Job {job_id}: Processing chunk {i+1}/{len(all_chunks)}")
+                embedding = ollama_client.generate_embedding(processing_text)
+                
+                # Add file information to metadata
+                if "#chunk-" in all_chunk_ids[i]:
+                    source_file = all_chunk_ids[i].split("#chunk-")[0]
+                    chunk_num = all_chunk_ids[i].split("#chunk-")[1]
+                    metadata["filename"] = source_file
+                    metadata["chunk_id"] = all_chunk_ids[i]
+                    metadata["chunk_num"] = chunk_num
+                else:
+                    metadata["filename"] = all_chunk_ids[i]
+                
+                # Add to ChromaDB
+                db_collection.add(
+                    ids=[all_chunk_ids[i]],
+                    embeddings=[embedding],
+                    metadatas=[metadata],
+                    documents=[processing_text]
+                )
+                
+                successful += 1
+                with job_lock:
+                    processing_jobs[job_id]["successful_chunks"] = successful
+                    progress = 50 + int((i + 1) / len(all_chunks) * 40)  # Progress from 50% to 90%
+                    processing_jobs[job_id]["progress"] = progress
+                
+            except Exception as e:
+                print(f"Job {job_id}: Error processing chunk {i+1}: {e}")
+                failed += 1
+                with job_lock:
+                    processing_jobs[job_id]["failed_chunks"] = failed
+        
+        # Update domain terms
+        term_update_status = None
+        try:
+            # Get document count before refresh
+            prev_term_count = len(query_classifier.product_terms)
+            
+            # Refresh terms from ChromaDB
+            query_classifier.update_terms_from_db(db_collection)
+            
+            # Get updated term count
+            new_term_count = len(query_classifier.product_terms)
+            term_update_status = {
+                "previous_term_count": prev_term_count,
+                "new_term_count": new_term_count,
+                "terms_updated": True
+            }
+        except Exception as e:
+            print(f"Job {job_id}: Error refreshing domain terms: {e}")
+            term_update_status = {
+                "terms_updated": False,
+                "error": str(e)
+            }
+        
+        # Finalize job
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_COMPLETED
+            processing_jobs[job_id]["progress"] = 100
+            processing_jobs[job_id]["result"] = {
+                "message": "File processed successfully" if failed == 0 else "File processed with some errors",
+                "file_path": file_path,
+                "total_chunks": len(all_chunks),
+                "successful_chunks": successful,
+                "failed_chunks": failed,
+                "term_extraction": term_update_status
+            }
+            
+        print(f"Job {job_id}: Processing completed - {successful} chunks processed, {failed} failed")
+        
+    except Exception as e:
+        error_message = f"Error processing file: {str(e)}"
+        print(f"Job {job_id}: {error_message}")
+        
+        with job_lock:
+            processing_jobs[job_id]["status"] = JOB_STATUS_FAILED
+            processing_jobs[job_id]["error"] = error_message
+            processing_jobs[job_id]["progress"] = 100
+            processing_jobs[job_id]["result"] = {
+                "message": "File processing failed",
+                "error": error_message,
+                "file_path": file_path
+            }
+
+@app.post("/clear-db", summary="Clear the database", description="Clear all documents from ChromaDB.")
+async def clear_database():
+    """Clear all documents from the database"""
+    try:
+        # Get current document count for reporting
+        doc_count = db_collection.count()
+        
+        # Clear the collection
+        db_collection.delete(where={})
+        
+        # Refresh the domain terms to reflect the empty database
+        try:
+            query_classifier.update_terms_from_db(db_collection)
+        except Exception as e:
+            print(f"Error refreshing domain terms after clearing DB: {e}")
+        
+        return {
+            "status": "success",
+            "message": f"Database cleared successfully. Removed {doc_count} documents.",
+            "documents_removed": doc_count
+        }
+    except Exception as e:
+        print(f"Error clearing database: {e}")
+        return {
+            "status": "error",
+            "message": f"Error clearing database: {str(e)}"
         }
 
 @app.get("/chunks", summary="List document chunks", description="Retrieve chunks stored in ChromaDB with optional filtering.")

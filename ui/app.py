@@ -194,6 +194,48 @@ def api_health():
     except Exception as e:
         logging.error(f"Error getting health status: {e}")
         return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/clear-db', methods=['POST'])
+def clear_database():
+    """Clear the database"""
+    try:
+        response = requests.post(f"{API_URL}/clear-db", timeout=10)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error clearing database: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/upload-file', methods=['POST'])
+def upload_file():
+    """Upload a file to the API"""
+    try:
+        # Get the file from the request
+        if 'file' not in request.files:
+            return jsonify({"status": "error", "message": "No file provided"})
+            
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({"status": "error", "message": "No file selected"})
+            
+        # Check if process_immediately is set
+        process_immediately = request.form.get('process_immediately', 'false').lower() == 'true'
+        
+        # Forward the file to the API
+        files = {'file': (file.filename, file.read(), file.content_type)}
+        data = {'process_immediately': str(process_immediately)}
+        
+        response = requests.post(
+            f"{API_URL}/upload-file",
+            files=files,
+            data=data,
+            timeout=60
+        )
+        
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error uploading file: {e}")
+        return jsonify({"status": "error", "message": str(e)})
         
 @app.route('/api/chunks', methods=['GET'])
 def get_chunks():

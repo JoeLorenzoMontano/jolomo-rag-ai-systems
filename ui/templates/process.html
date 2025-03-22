@@ -19,9 +19,60 @@
         
         <h1 class="mb-4">Process Documents</h1>
         
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-upload"></i> Upload File
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form id="upload-form" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="file-upload" class="form-label">Select a file to upload</label>
+                                <input class="form-control" type="file" id="file-upload" accept=".txt,.pdf">
+                                <div class="form-text">Supported file types: TXT, PDF</div>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="process-immediately" checked>
+                                <label class="form-check-label" for="process-immediately">
+                                    Process immediately after upload
+                                </label>
+                            </div>
+                            <div class="d-flex">
+                                <button type="submit" class="btn btn-warning me-2" id="upload-button">
+                                    <span id="upload-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    Upload File
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-trash"></i> Database Management
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-3">Clear all documents from the vector database. <strong>This action cannot be undone.</strong></p>
+                        <button type="button" class="btn btn-danger" id="clear-db-button" data-bs-toggle="modal" data-bs-target="#clearDbModal">
+                            <i class="bi bi-trash"></i> Clear Database
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
-                Processing Configuration
+                <i class="bi bi-gear"></i> Processing Configuration
             </div>
             <div class="card-body">
                 <form id="process-form">
@@ -76,6 +127,29 @@
                         Process Documents
                     </button>
                 </form>
+            </div>
+        </div>
+        
+        <!-- Clear DB Confirmation Modal -->
+        <div class="modal fade" id="clearDbModal" tabindex="-1" aria-labelledby="clearDbModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title" id="clearDbModalLabel">Confirm Database Clear</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>Warning:</strong> This will permanently delete all documents from the vector database. This action cannot be undone.</p>
+                        <p>Are you sure you want to proceed?</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="confirm-clear-db">
+                            <span id="clear-db-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            Clear Database
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -550,6 +624,140 @@
                     console.error('Error viewing job:', error);
                 }
             }
+            
+            // File upload form
+            const uploadForm = document.getElementById('upload-form');
+            const fileUpload = document.getElementById('file-upload');
+            const processImmediately = document.getElementById('process-immediately');
+            const uploadButton = document.getElementById('upload-button');
+            const uploadSpinner = document.getElementById('upload-spinner');
+            
+            // Clear DB elements
+            const clearDbButton = document.getElementById('clear-db-button');
+            const confirmClearDbButton = document.getElementById('confirm-clear-db');
+            const clearDbModal = new bootstrap.Modal(document.getElementById('clearDbModal'));
+            const clearDbSpinner = document.getElementById('clear-db-spinner');
+            
+            // Upload file form submission
+            uploadForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                // Validate file
+                if (!fileUpload.files || fileUpload.files.length === 0) {
+                    alert('Please select a file to upload');
+                    return;
+                }
+                
+                const file = fileUpload.files[0];
+                
+                // Check file size (limit to 10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('File size exceeds the 10MB limit');
+                    return;
+                }
+                
+                // Check file type
+                if (!file.name.endsWith('.txt') && !file.name.endsWith('.pdf')) {
+                    alert('Only .txt and .pdf files are supported');
+                    return;
+                }
+                
+                // Show spinner and disable button
+                uploadSpinner.classList.remove('d-none');
+                uploadButton.disabled = true;
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('process_immediately', processImmediately.checked);
+                
+                try {
+                    // Send request to upload file
+                    const response = await fetch('/api/upload-file', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'error') {
+                        // Show error
+                        resultCard.classList.remove('d-none');
+                        resultContent.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                    } else {
+                        // Show success and start job tracking if processing immediately
+                        resultCard.classList.remove('d-none');
+                        resultContent.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                        
+                        // If processing immediately, start tracking the job
+                        if (processImmediately.checked && data.job_id) {
+                            // Get the job ID 
+                            const jobId = data.job_id;
+                            
+                            // Setup the job status card
+                            currentJobId = jobId;
+                            jobIdDisplay.textContent = jobId.substring(0, 8) + '...';
+                            jobStatusCard.classList.remove('d-none');
+                            
+                            // Start polling for updates
+                            startPolling(jobId);
+                            
+                            // Load all jobs
+                            loadAllJobs();
+                        }
+                        
+                        // Reset form
+                        uploadForm.reset();
+                    }
+                } catch (error) {
+                    // Show error
+                    resultCard.classList.remove('d-none');
+                    resultContent.innerHTML = `<div class="alert alert-danger">Error uploading file: ${error.message}</div>`;
+                } finally {
+                    // Hide spinner and enable button
+                    uploadSpinner.classList.add('d-none');
+                    uploadButton.disabled = false;
+                }
+            });
+            
+            // Clear database confirmation
+            confirmClearDbButton.addEventListener('click', async () => {
+                // Show spinner and disable button
+                clearDbSpinner.classList.remove('d-none');
+                confirmClearDbButton.disabled = true;
+                
+                try {
+                    // Send request to clear DB
+                    const response = await fetch('/api/clear-db', {
+                        method: 'POST'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    // Hide modal
+                    clearDbModal.hide();
+                    
+                    // Show result
+                    resultCard.classList.remove('d-none');
+                    
+                    if (data.status === 'error') {
+                        resultContent.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                    } else {
+                        resultContent.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                        
+                        // Refresh jobs list (should be empty now)
+                        loadAllJobs();
+                    }
+                } catch (error) {
+                    // Show error
+                    resultCard.classList.remove('d-none');
+                    resultContent.innerHTML = `<div class="alert alert-danger">Error clearing database: ${error.message}</div>`;
+                } finally {
+                    // Hide spinner and enable button
+                    clearDbSpinner.classList.add('d-none');
+                    confirmClearDbButton.disabled = false;
+                }
+            });
             
             // Process form submission
             processForm.addEventListener('submit', async (e) => {
