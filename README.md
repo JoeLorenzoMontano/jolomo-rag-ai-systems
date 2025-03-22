@@ -9,6 +9,8 @@
 >    **Why Option A is recommended**: Running Ollama in a container with CPU-only is noticeably slow, with responses taking 15-30+ seconds. With Ollama installed directly on your host machine, you'll get significantly faster responses (3-8 seconds) and easier GPU acceleration if available. See the ["Ollama Setup Options"](#ollama-setup-options) section for installation instructions.
 >
 > 2. **Pre-populated Database**: The ChromaDB database comes pre-populated with embeddings for all the documents in the `rag-documents` directory, so you can start querying immediately. If you wish to re-process the documents with different chunking settings, you can clear the database and re-process them through the System Info page in the UI or using the `/clear-db` and `/process` API endpoints.
+>
+> 3. **API Keys Included**: The provided `.env` file includes my personal Serper.dev API key for web search functionality. You can use it during your review without needing to register for your own key.
 
 A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB, and generates AI responses based on the most relevant content. The system includes both an API backend and a web-based user interface.
 
