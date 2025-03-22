@@ -1237,12 +1237,12 @@ async def clear_database():
             else:
                 # Fallback method: recreate the collection
                 try:
+                    global db_collection
                     # First try to delete the entire collection
                     chroma_client.delete_collection("documents")
                     print("Collection deleted")
                     
                     # Then recreate it
-                    global db_collection
                     db_collection = chroma_client.create_collection(
                         name="documents",
                         metadata={"description": "Main document collection for RAG processing"}
