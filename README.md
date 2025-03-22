@@ -119,12 +119,32 @@ For Linux, the special `host-gateway` setting enables access to the host machine
 ├── .env                            # Environment variables (create this file)
 ├── app/                            # API Backend (FastAPI)
 │   ├── Dockerfile                  # Container definition for API
-│   ├── document-processing-api.py  # Main FastAPI application
+│   ├── main.py                     # Main FastAPI application
+│   ├── core/                       # Core configuration and utilities
+│   │   ├── config.py               # Application configuration
+│   │   ├── dependencies.py         # Dependency injection container
+│   │   └── utils.py                # Common utility functions
+│   ├── models/                     # Data models
+│   │   └── schemas.py              # Pydantic models for requests/responses
+│   ├── routers/                    # API route handlers
+│   │   ├── documents.py            # Document processing endpoints
+│   │   ├── health.py               # Health check endpoints
+│   │   ├── jobs.py                 # Job tracking endpoints
+│   │   ├── query.py                # Query processing endpoints
+│   │   └── terms.py                # Domain term endpoints
+│   ├── services/                   # Business logic services
+│   │   ├── content_processing_service.py # Document processing service
+│   │   ├── database_service.py     # ChromaDB operations
+│   │   ├── job_service.py          # Background job tracking
+│   │   └── query_service.py        # Query processing service
+│   ├── utils/                      # Utility modules
+│   │   ├── ollama_client.py        # Ollama API client
+│   │   ├── text_chunker.py         # Document chunking strategy
+│   │   ├── query_classifier.py     # Query classification system
+│   │   ├── pdf_extractor.py        # PDF text extraction
+│   │   └── web_search.py           # Web search integration
 │   ├── requirements.txt            # Python dependencies
-│   ├── startup.sh                  # API startup script
-│   └── utils/                      # Utility modules
-│       ├── ollama_client.py        # Ollama API client
-│       └── web_search.py           # Web search integration
+│   └── startup.sh                  # API startup script
 ├── docker-compose.yml              # Container orchestration config
 ├── rag-documents/                  # Document collection to process
 │   ├── *.md                        # Markdown documents
@@ -137,14 +157,18 @@ For Linux, the special `host-gateway` setting enables access to the host machine
 │   └── templates/                  # HTML templates
 ```
 
-### Key Files
+### Key Files and Components
 
-- **document-processing-api.py**: Core RAG implementation with document processing, embedding, and retrieval logic
+- **main.py**: Main entry point for the FastAPI application
 - **docker-compose.yml**: Defines all services, networking, and volume configuration
-- **ollama_client.py**: Handles communication with Ollama LLM service for embeddings and completions
-- **web_search.py**: Implements the web search functionality using Serper.dev API
-- **query_classifier.py**: Intelligently determines when to use document retrieval vs. web search
-- **document_processor.py**: Handles document chunking and preparation strategies
+- **core/dependencies.py**: Service dependency injection container
+- **services/content_processing_service.py**: Manages document processing, chunking, and embedding
+- **services/query_service.py**: Handles query processing and response generation
+- **services/database_service.py**: Interface to ChromaDB for vector storage
+- **utils/text_chunker.py**: Implements the document chunking strategy
+- **utils/ollama_client.py**: Handles communication with Ollama LLM service for embeddings and completions
+- **utils/query_classifier.py**: Intelligently determines when to use document retrieval vs. web search
+- **utils/web_search.py**: Implements the web search functionality using Serper.dev API
 - **ui/app.py**: Flask application for the web interface
 
 ## Working with Documents
