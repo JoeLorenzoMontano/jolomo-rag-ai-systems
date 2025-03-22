@@ -66,11 +66,33 @@ def process_documents():
         params['enhance_chunks'] = enhance_chunks.lower() == 'true'
     
     try:
-        # Call the API
-        response = requests.post(f"{API_URL}/process", params=params, timeout=60)
+        # Call the API - now it returns immediately with a job ID
+        response = requests.post(f"{API_URL}/process", params=params, timeout=10)
         return jsonify(response.json())
     except Exception as e:
-        logging.error(f"Error processing documents: {e}")
+        logging.error(f"Error starting document processing job: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/job/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    """Proxy for the job status API endpoint"""
+    try:
+        # Call the API to get job status
+        response = requests.get(f"{API_URL}/job/{job_id}", timeout=5)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error getting job status: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/jobs', methods=['GET'])
+def list_jobs():
+    """Proxy for the list jobs API endpoint"""
+    try:
+        # Call the API to list all jobs
+        response = requests.get(f"{API_URL}/jobs", timeout=5)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error listing jobs: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/query', methods=['GET'])
