@@ -22,6 +22,7 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 ### Prerequisites and Requirements
 
 - **Docker Engine** and **Docker Compose**
+- **Ollama** installed on your host machine (recommended for better performance)
 - Internet access for pulling container images, LLM models, and (optionally) web search functionality
 - (Optional) NVIDIA GPU with compatible drivers for GPU acceleration
 - Documents must be in Markdown (.md) format and placed in the `rag-documents` directory
@@ -35,12 +36,6 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
    # Ollama Settings
    MODEL=llama2:latest
    EMBEDDING_MODEL=all-minilm:l6-v2
-   
-   # For GPU support
-   OLLAMA_GPU_DEVICES=all
-   OLLAMA_GPU_COUNT=1
-   OLLAMA_GPU_MODE=shared
-   OLLAMA_GPU_LAYERS=32
    
    # For web search (optional)
    SERPER_API_KEY=your_serper_api_key_here
@@ -59,12 +54,6 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 ### Accessing the Services
 
 - **Web UI**: http://localhost:5000
-  - **Home**: Index page with all available tools
-  - **Chat**: Simple conversational interface with memory
-  - **Advanced Query**: Detailed interface with classification details and full source content
-  - **Process Documents**: Document processing interface
-  - **Chunks Explorer**: Browse and filter document chunks
-  - **System Information**: View system health and manage domain terms
 - **API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 - **ChromaDB**: http://localhost:8001 (direct database access)
