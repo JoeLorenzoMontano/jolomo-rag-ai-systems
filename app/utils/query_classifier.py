@@ -101,38 +101,47 @@ Extract the following types of terms:
 5. Important actions or processes
 6. Abbreviations and acronyms with their expansions
 
-Format your response as a JSON array of strings, with each string being a term.
-Include both single words and multi-word phrases (2-3 word phrases) that represent complete concepts.
-ONLY return the JSON array, nothing else.
+You MUST follow these formatting instructions exactly:
+- Your response must consist ONLY of a valid JSON array of strings
+- Begin your response with [ and end with ]
+- Each extracted term should be a string inside the array
+- Include both single words and multi-word phrases (2-3 word phrases)
+- Make sure to escape any special characters properly
+- Do not add any commentary, explanation, or markdown formatting
+- Do not include the term "json" or "array" in your response
+- Format must be parseable by JSON.parse()
+
+Example correct response format:
+["term1", "term2", "concept name", "technical jargon", "organization name"]
 
 Here is the text to analyze:
 
 ```
 {text}
 ```
-
-JSON response:
 """
 
         try:
             # Generate response from Ollama
             response = ollama_client.generate_response(context="", query=prompt)
             
-            # Extract JSON array from response
+            # Log the raw response for debugging
+            self.logger.debug(f"Raw Ollama response: {response[:200]}...")
+            
+            # Extract JSON array from response using multiple approaches
             import re
             import json
             
-            # Find JSON array in response (handles cases where model adds extra text)
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
-            if not json_match:
-                self.logger.warning("Could not find JSON array in Ollama response")
-                return []
-                
-            json_str = json_match.group(0)
+            # Approach 1: Clean up response and attempt to parse
+            # Remove any markdown code block markers
+            cleaned_response = re.sub(r'```json|```|\s*```', '', response)
+            # Remove any non-array text before or after the array
+            cleaned_response = re.sub(r'^[^[]*', '', cleaned_response)
+            cleaned_response = re.sub(r'[^\]]*$', '', cleaned_response)
             
-            # Parse JSON
+            # Try to parse the cleaned response
             try:
-                terms = json.loads(json_str)
+                terms = json.loads(cleaned_response)
                 
                 # Ensure we have a list of strings
                 if isinstance(terms, list):
@@ -149,15 +158,86 @@ JSON response:
                     return terms
                 else:
                     self.logger.warning(f"Ollama returned invalid terms format: {type(terms)}")
-                    return []
-            except json.JSONDecodeError as e:
-                self.logger.warning(f"Could not parse JSON from Ollama response: {e}")
-                return []
+            except json.JSONDecodeError:
+                self.logger.warning("Could not parse cleaned JSON response")
+            
+            # Approach 2: Look for an array pattern with regex
+            json_match = re.search(r'\[(.*?)\]', response, re.DOTALL)
+            if json_match:
+                try:
+                    json_str = json_match.group(0)
+                    terms = json.loads(json_str)
+                    
+                    # Ensure we have a list of strings
+                    if isinstance(terms, list):
+                        # Filter to ensure all terms are strings
+                        terms = [str(term).strip().lower() for term in terms if term]
+                        
+                        # Deduplicate
+                        terms = list(dict.fromkeys(terms))
+                        
+                        # Limit to max_terms
+                        terms = terms[:max_terms]
+                        
+                        self.logger.info(f"Successfully extracted {len(terms)} terms using regex approach")
+                        return terms
+                except json.JSONDecodeError:
+                    self.logger.warning("Could not parse JSON from regex match")
+            
+            # Approach 3: Extract terms manually with regex if JSON parsing fails
+            self.logger.warning("Falling back to manual term extraction with regex")
+            # Look for quoted strings that might be terms
+            quoted_terms = re.findall(r'"([^"]+)"', response)
+            if quoted_terms:
+                # Process quoted terms
+                terms = [term.strip().lower() for term in quoted_terms if term.strip()]
+                
+                # Deduplicate
+                terms = list(dict.fromkeys(terms))
+                
+                # Limit to max_terms
+                terms = terms[:max_terms]
+                
+                self.logger.info(f"Extracted {len(terms)} terms using quoted string approach")
+                return terms
+                
+            # If all else fails, extract potential terms with basic pattern matching
+            self.logger.warning("Falling back to line-by-line extraction")
+            potential_terms = []
+            
+            # Split response by lines and look for patterns like "- term" or "* term" or numbered lists
+            lines = response.split('\n')
+            for line in lines:
+                # Remove markdown list markers and other formatting
+                line = re.sub(r'^[-*•]|\d+[.)]|\s+', ' ', line).strip()
+                
+                # Skip empty lines or very long lines
+                if not line or len(line) > 100:
+                    continue
+                    
+                # Remove any quotes
+                line = line.replace('"', '').replace("'", "")
+                
+                # Add cleaned line as a potential term
+                if line:
+                    potential_terms.append(line.lower())
+            
+            if potential_terms:
+                # Deduplicate
+                terms = list(dict.fromkeys(potential_terms))
+                
+                # Limit to max_terms
+                terms = terms[:max_terms]
+                
+                self.logger.info(f"Extracted {len(terms)} terms using line approach")
+                return terms
+            
+            self.logger.warning("All term extraction methods failed")
+            return []
                 
         except Exception as e:
             self.logger.error(f"Error using Ollama for term extraction: {e}")
             return []
-            
     
     def classify(self, 
                 query: str, 
