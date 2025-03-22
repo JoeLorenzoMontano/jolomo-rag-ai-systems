@@ -43,7 +43,8 @@ class QueryService:
                      combine_chunks: bool = True,
                      web_search: Optional[bool] = None,
                      web_results_count: int = 5,
-                     explain_classification: bool = False) -> Dict[str, Any]:
+                     explain_classification: bool = False,
+                     enhance_query: bool = True) -> Dict[str, Any]:
         """
         Process a query and generate a response.
         
@@ -54,6 +55,7 @@ class QueryService:
             web_search: Whether to use web search (None for auto)
             web_results_count: Number of web search results to include
             explain_classification: Whether to include classification explanation
+            enhance_query: Whether to enhance the query for better retrieval (default: True)
             
         Returns:
             Dictionary with query response and sources
@@ -69,9 +71,27 @@ class QueryService:
                     "status": "error",
                     "error": "Empty collection"
                 }
-                
+            
+            # Store the original query for response
+            original_query = query
+            
+            # Enhance the query if enabled
+            search_query = query
+            enhanced_query_text = None
+            
+            if enhance_query:
+                try:
+                    self.logger.info(f"Enhancing query: '{query}'")
+                    enhanced_query_text = self.ollama_client.enhance_query(query)
+                    
+                    if enhanced_query_text and enhanced_query_text != query:
+                        self.logger.info(f"Enhanced query: '{enhanced_query_text}'")
+                        search_query = enhanced_query_text
+                except Exception as e:
+                    self.logger.warning(f"Query enhancement failed: {e}, using original query")
+            
             # Generate embedding for the query using Ollama
-            query_embedding = self.ollama_client.generate_embedding(query)
+            query_embedding = self.ollama_client.generate_embedding(search_query)
             
             # Log the embedding dimension for debugging
             self.logger.info(f"Generated query embedding with dimension: {len(query_embedding)}")
@@ -181,13 +201,19 @@ class QueryService:
             
             # Prepare response
             response_data = {
-                "query": query, 
+                "query": original_query,  # Always return the original query
                 "response": response, 
                 "sources": cleaned_results,
                 "status": "success",
                 "web_search_used": len(web_results) > 0,  # Only true if actual web results were found and used
                 "source_type": source_type
             }
+            
+            # Add enhanced query information
+            response_data["query_enhanced"] = False
+            if enhanced_query_text and enhanced_query_text != original_query:
+                response_data["enhanced_query"] = enhanced_query_text
+                response_data["query_enhanced"] = True
             
             # Include classification details if requested
             if explain_classification and web_search is None:

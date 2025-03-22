@@ -19,7 +19,8 @@ async def query_documents(
     combine_chunks: bool = QueryParam(True, description="Whether to combine chunks from the same document"),
     web_search: bool = QueryParam(None, description="Whether to augment with web search results (auto if None)"),
     web_results_count: int = QueryParam(5, description="Number of web search results to include"),
-    explain_classification: bool = QueryParam(False, description="Whether to include query classification explanation")
+    explain_classification: bool = QueryParam(False, description="Whether to include query classification explanation"),
+    enhance_query: bool = QueryParam(True, description="Whether to enhance the query for better retrieval")
 ):
     """Query for relevant documents based on input text."""
     query_service = get_query_service()
@@ -31,7 +32,8 @@ async def query_documents(
             combine_chunks=combine_chunks,
             web_search=web_search,
             web_results_count=web_results_count,
-            explain_classification=explain_classification
+            explain_classification=explain_classification,
+            enhance_query=enhance_query
         )
         
         return result

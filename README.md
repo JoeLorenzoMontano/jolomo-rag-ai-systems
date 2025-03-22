@@ -100,6 +100,7 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
     - `web_search`: Whether to augment with web search results (null for auto-classification, true or false to explicitly set)
     - `web_results_count`: Number of web search results to include (default: 5)
     - `explain_classification`: Whether to include query classification explanation (default: false)
+    - `enhance_query`: Whether to enhance the query for better retrieval (default: true)
 
 #### Domain Term Management
 - **GET /terms**: Lists all domain-specific terms currently used by the query classifier
@@ -229,7 +230,14 @@ The system uses an intelligent classification mechanism to determine the optimal
    - **Web Search Source**: Used when query contains general knowledge questions outside document scope
    - **Hybrid Approach**: Used when confidence is moderate and both sources may contribute
 
-3. **Classification Visualization**:
+3. **Query Enhancement** (enabled by default):
+   - **Expands Acronyms and Abbreviations**: Translates shortened forms to improve matching
+   - **Adds Alternative Terms**: Includes synonyms and related concepts
+   - **Normalizes Text**: Removes possessives and expands contractions for better matching
+   - **Identifies Implied Questions**: Recognizes implicit information needs
+   - **Handles Variations**: Overcomes issues with apostrophes, plurals, and capitalization
+
+4. **Classification Visualization**:
    - Toggle "Show Classification Details" to see how your query was classified
    - Displays matched domain terms and confidence scores
    - Shows a visual breakdown of the classification decision

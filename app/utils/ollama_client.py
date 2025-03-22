@@ -138,6 +138,66 @@ class OllamaClient:
         Removes `<think>...</think>` sections from the AI output.
         """
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    
+    def enhance_query(self, original_query: str) -> str:
+        """
+        Enhances the original query to improve retrieval performance.
+        
+        This method expands the query, adds synonyms, removes contractions, 
+        and normalizes possessives to increase the chance of matching relevant documents.
+        
+        Args:
+            original_query: The user's original query text
+            
+        Returns:
+            Enhanced query text optimized for retrieval
+        """
+        if not original_query.strip():
+            return original_query
+            
+        try:
+            # Use a condensed prompt to save tokens
+            prompt = f"""Enhance this query for better document retrieval results:
+            "{original_query}"
+            
+            Follow these rules:
+            1. Expand acronyms and abbreviations
+            2. Include alternative terms for key concepts
+            3. Remove possessives (e.g., change "Joe's" to "Joe")
+            4. Normalize contractions (e.g., change "don't" to "do not")
+            5. Identify implied questions that aren't directly stated
+            6. Keep the enhanced query concise (max 3 sentences)
+            7. Maintain all important search terms from the original
+            8. Format as a single, more effective search query
+
+            Respond with ONLY the enhanced query text. No explanations.
+            """
+            
+            # Use a fast response with the current model
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.1}  # Low temperature for deterministic results
+            }
+            
+            response = requests.post(f"{self.base_url}/api/generate", json=payload)
+            response.raise_for_status()
+            result = response.json()
+            enhanced_query = self._remove_think_regions(result.get("response", original_query))
+            
+            # If something went wrong or response is empty, return original
+            if not enhanced_query or len(enhanced_query) < 3:
+                return original_query
+                
+            # Remove quotes if the model included them
+            enhanced_query = enhanced_query.strip('"\'')
+            
+            return enhanced_query
+        except Exception as e:
+            print(f"Error enhancing query: {e}")
+            # Fall back to original query if enhancement fails
+            return original_query
         
     def generate_semantic_enrichment(self, chunk_text: str, chunk_id: str, prev_chunk_text: str = None, next_chunk_text: str = None) -> str:
         """
