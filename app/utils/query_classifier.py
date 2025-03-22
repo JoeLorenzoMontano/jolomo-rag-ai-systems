@@ -44,19 +44,43 @@ class QueryClassifier:
         """
         try:
             # Get all documents from the collection
-            all_docs = db_collection.get(include=["documents"])
+            all_docs = db_collection.get(include=["documents", "metadatas"])
             if not all_docs or "documents" not in all_docs or not all_docs["documents"]:
                 self.logger.warning("No documents found in ChromaDB for term extraction")
                 return
+            
+            # Filter out enrichment sections from documents by using original_text if available
+            filtered_docs = []
+            for i, doc in enumerate(all_docs["documents"]):
+                if "metadatas" in all_docs and all_docs["metadatas"] and i < len(all_docs["metadatas"]):
+                    # If we have original_text metadata, use that instead of enriched text
+                    metadata = all_docs["metadatas"][i]
+                    if metadata and "original_text" in metadata:
+                        filtered_docs.append(metadata["original_text"])
+                        continue
+                
+                # Otherwise use the document but remove ENRICHMENT sections
+                if "ENRICHMENT:" in doc:
+                    # Only use text before the ENRICHMENT marker
+                    clean_doc = doc.split("ENRICHMENT:")[0].strip()
+                    filtered_docs.append(clean_doc)
+                else:
+                    filtered_docs.append(doc)
                 
             # Process documents to extract important terms
-            doc_text = " ".join(all_docs["documents"])
+            doc_text = " ".join(filtered_docs)
             extracted_terms = self._extract_important_terms(doc_text)
             
             # Set the product terms to the extracted terms
             self.product_terms = extracted_terms
             
-            self.logger.info(f"Updated product terms from ChromaDB: Found {len(self.product_terms)} terms")
+            # Log the top terms for debugging
+            if extracted_terms:
+                top_terms = ", ".join(extracted_terms[:10])
+                self.logger.info(f"Updated product terms from ChromaDB: Found {len(self.product_terms)} terms")
+                self.logger.info(f"Top extracted terms: {top_terms}")
+            else:
+                self.logger.warning("No terms could be extracted from documents")
             
         except Exception as e:
             self.logger.error(f"Error extracting terms from ChromaDB: {e}")
@@ -92,9 +116,11 @@ class QueryClassifier:
         except Exception as e:
             self.logger.warning(f"Could not filter stopwords: {e}")
         
-        # Filter out short words and image file references
+        # Filter out short words, image file references, and enrichment-related terms
+        enrichment_terms = ['enrichment', 'context', 'summary', 'section', 'paragraph']
         words = [word for word in words if len(word) >= min_length and 
-                 not any(ext in word for ext in ['png', 'jpg', 'jpeg', 'gif'])]
+                 not any(ext in word for ext in ['png', 'jpg', 'jpeg', 'gif']) and
+                 word not in enrichment_terms]
         
         # Count word frequencies
         word_counts = Counter(words)
@@ -104,9 +130,11 @@ class QueryClassifier:
         
         # Also extract bigrams (pairs of consecutive words)
         bigrams = []
+        enrichment_bigrams = ['context summary', 'this section', 'section describes', 'summary this', 
+                              'this document', 'document describes', 'covers the', 'details how']
         for i in range(len(words) - 1):
             bigram = words[i] + " " + words[i+1]
-            if len(bigram) >= min_length:
+            if len(bigram) >= min_length and bigram not in enrichment_bigrams:
                 bigrams.append(bigram)
                 
         # Count bigram frequencies
