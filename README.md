@@ -69,13 +69,30 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 - **Ollama**: http://localhost:11434 (LLM server)
 ### API Endpoints
 
+#### Document Processing
 - **POST /process**: Processes all documents in the `rag-documents` directory and stores their embeddings in ChromaDB
   - Optional query parameters:
     - `chunk_size`: Override max chunk size
     - `min_size`: Override min chunk size
     - `overlap`: Override chunk overlap
     - `enable_chunking`: Override chunking enabled setting (true/false)
-  
+    - `enhance_chunks`: Whether to add semantic enrichment (default: true)
+
+- **POST /upload-file**: Upload a file (txt or PDF) to be processed
+  - Form parameters:
+    - `file`: The file to upload
+    - `process_immediately`: Whether to process the file immediately (default: false)
+
+- **POST /clear-db**: Clear all documents from ChromaDB
+
+- **GET /chunks**: List document chunks stored in ChromaDB with optional filtering
+  - Optional query parameters:
+    - `limit`: Limit the number of chunks returned (default: 20)
+    - `offset`: Starting offset for pagination (default: 0)
+    - `filename`: Filter by filename (partial match)
+    - `content`: Filter by content (partial match)
+
+#### Query and Search
 - **GET /query?query=YOUR_QUERY**: Returns a response based on the most relevant documents matching your query
   - Optional query parameters:
     - `n_results`: Number of results to return (default: 3)
@@ -84,11 +101,18 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
     - `web_results_count`: Number of web search results to include (default: 5)
     - `explain_classification`: Whether to include query classification explanation (default: false)
 
-- **GET /health**: Returns detailed health status of all services and components
-
+#### Domain Term Management
 - **GET /terms**: Lists all domain-specific terms currently used by the query classifier
 
 - **POST /refresh-terms**: Manually refreshes the domain-specific terms by extracting terminology from the current document collection
+
+#### Job Management
+- **GET /job/{job_id}**: Check the status of a background job by ID
+
+- **GET /jobs**: List all background jobs
+
+#### System
+- **GET /health**: Returns detailed health status of all services and components
 
 ### Using Host Machine's Ollama
 
