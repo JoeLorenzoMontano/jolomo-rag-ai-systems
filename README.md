@@ -12,6 +12,12 @@
 
 A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB, and generates AI responses based on the most relevant content. The system includes both an API backend and a web-based user interface.
 
+**Key Features**:
+- **Smart Document Chunking**: Semantic chunking for optimal retrieval
+- **Query Classification**: Intelligently routes between document and web search
+- **Conversation Memory**: Maintains context for natural follow-up questions
+- **Web Search Integration**: Augments with internet search for comprehensive answers
+
 ## Setup and Usage
 
 ### Prerequisites and Requirements
