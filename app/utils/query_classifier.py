@@ -1,19 +1,6 @@
 from typing import List, Dict, Tuple, Optional, Any
 import re
-from collections import Counter
-import string
-import nltk
-from nltk.corpus import stopwords
 import logging
-
-# Initialize NLTK resources
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    try:
-        nltk.download('stopwords', quiet=True)
-    except Exception as e:
-        logging.warning(f"Could not download NLTK stopwords: {e}")
 
 class QueryClassifier:
     """
@@ -43,9 +30,9 @@ class QueryClassifier:
         if not self.product_terms:
             self.product_terms = ["duplocloud", "tenant", "infrastructure"]
             
-    def update_terms_from_db(self, db_collection, ollama_client=None):
+    def update_terms_from_db(self, db_collection, ollama_client):
         """
-        Update product terms using content stored in ChromaDB, with optional
+        Update product terms using content stored in ChromaDB with
         Ollama-powered entity extraction
         
         Args:
@@ -59,23 +46,15 @@ class QueryClassifier:
                 self.logger.warning("No documents found in ChromaDB for term extraction")
                 return
                 
-            # If Ollama client is provided, use LLM-powered extraction
-            if ollama_client:
-                self.logger.info("Using Ollama for intelligent domain term extraction")
-                # Use a sample of documents (to avoid context length issues)
-                doc_sample = self._sample_documents(all_docs["documents"])
-                extracted_terms = self._extract_terms_with_ollama(doc_sample, ollama_client)
-                
-                # Fall back to statistical extraction if Ollama extraction fails
-                if not extracted_terms:
-                    self.logger.warning("Falling back to statistical term extraction")
-                    doc_text = " ".join(all_docs["documents"])
-                    extracted_terms = self._extract_important_terms(doc_text)
-            else:
-                # Use statistical extraction
-                self.logger.info("Using statistical term extraction")
-                doc_text = " ".join(all_docs["documents"])
-                extracted_terms = self._extract_important_terms(doc_text)
+            self.logger.info("Using Ollama for intelligent domain term extraction")
+            # Use a sample of documents (to avoid context length issues)
+            doc_sample = self._sample_documents(all_docs["documents"])
+            extracted_terms = self._extract_terms_with_ollama(doc_sample, ollama_client)
+            
+            # Fall back to minimal terms if extraction fails
+            if not extracted_terms:
+                self.logger.warning("LLM term extraction failed, falling back to minimal terms")
+                extracted_terms = ["duplocloud", "tenant", "infrastructure"]
             
             # Set the product terms to the extracted terms
             self.product_terms = extracted_terms
@@ -188,68 +167,6 @@ JSON response:
             self.logger.error(f"Error using Ollama for term extraction: {e}")
             return []
             
-    def _extract_important_terms(self, text, min_length=4, max_terms=50):
-        """
-        Extract important domain-specific terms from text using a statistical approach
-        
-        Args:
-            text: The text to analyze
-            min_length: Minimum length for a term to be considered
-            max_terms: Maximum number of terms to return
-            
-        Returns:
-            List of important terms
-        """
-        # Convert to lowercase and tokenize by splitting on whitespace and punctuation
-        text = text.lower()
-        
-        # Remove punctuation and numbers
-        translator = str.maketrans('', '', string.punctuation + string.digits)
-        text = text.translate(translator)
-        
-        # Split into words
-        words = text.split()
-        
-        # Remove common English stopwords
-        try:
-            stop_words = set(stopwords.words('english'))
-            words = [word for word in words if word not in stop_words]
-        except Exception as e:
-            self.logger.warning(f"Could not filter stopwords: {e}")
-        
-        # Filter out short words and image file references
-        words = [word for word in words if len(word) >= min_length and 
-                 not any(ext in word for ext in ['png', 'jpg', 'jpeg', 'gif'])]
-        
-        # Count word frequencies
-        word_counts = Counter(words)
-        
-        # Extract the most common terms (excluding very common words)
-        common_terms = [term for term, count in word_counts.most_common(max_terms * 2)]
-        
-        # Also extract bigrams (pairs of consecutive words)
-        bigrams = []
-        for i in range(len(words) - 1):
-            bigram = words[i] + " " + words[i+1]
-            if len(bigram) >= min_length:
-                bigrams.append(bigram)
-                
-        # Count bigram frequencies
-        bigram_counts = Counter(bigrams)
-        
-        # Extract the most common bigrams
-        common_bigrams = [term for term, count in bigram_counts.most_common(max_terms)]
-        
-        # Combine unigrams and bigrams, prioritizing more specific terms
-        all_terms = common_bigrams + common_terms
-        
-        # Remove duplicates while preserving order
-        unique_terms = []
-        for term in all_terms:
-            if term not in unique_terms:
-                unique_terms.append(term)
-                
-        return unique_terms[:max_terms]
     
     def classify(self, 
                 query: str, 
