@@ -12,7 +12,7 @@ import requests
 import time as import_time
 import shutil
 import io
-import PyPDF2
+from utils.pdf_extractor import PDFExtractor
 from utils.ollama_client import OllamaClient
 from utils.web_search import WebSearchClient
 from utils.document_processor import DocumentProcessor
@@ -148,6 +148,9 @@ doc_processor = DocumentProcessor(
 # Initialize Query Classifier for determining when to use web search
 # Pass the ChromaDB collection to extract domain-specific terms
 query_classifier = QueryClassifier(confidence_threshold=0.6, db_collection=db_collection)
+
+# Initialize PDF extractor
+pdf_extractor = PDFExtractor(temp_dir=DOCS_FOLDER)
 
 # ===============================================================
 # Background Processing Job Tracking
@@ -933,12 +936,14 @@ async def upload_file(
         # Process PDF files by extracting text
         if file.filename.endswith('.pdf'):
             try:
-                # Extract text from PDF
-                pdf_text = ""
-                pdf_reader = PyPDF2.PdfReader(io.BytesIO(contents))
-                
-                for page_num in range(len(pdf_reader.pages)):
-                    pdf_text += pdf_reader.pages[page_num].extract_text() + "\n\n"
+                # Use our PDF extractor for better results
+                try:
+                    pdf_text = pdf_extractor.extract_text(contents, filename=safe_filename)
+                except Exception as e:
+                    return {
+                        "status": "error",
+                        "message": f"Error extracting text from PDF: {str(e)}"
+                    }
                 
                 # Save the extracted text to a markdown file
                 md_filename = safe_filename.replace('.pdf', '.md')
