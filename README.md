@@ -2,9 +2,13 @@
 
 > **⚠️ IMPORTANT FOR REVIEWERS**: 
 >
-> 1. Running Ollama in a container with CPU-only will be noticeably slow. For better performance, install Ollama directly on your host machine and use the default `docker-compose up -d` command, which is already configured to use your host's Ollama installation. Host machine installation typically provides easier GPU access and significantly faster response times. See the ["Host Ollama Setup"](#host-ollama-setup) section for details.
+> 1. **Docker Compose Options**:
+>    - **Option A (Recommended)**: `docker-compose up -d` - Uses Ollama installed on your host machine
+>    - **Option B (Slower)**: `docker-compose -f docker-compose.docker.ollama.yml up -d` - Runs Ollama in a container
 >
-> 2. The ChromaDB database comes pre-populated with embeddings for all the documents in the `rag-documents` directory, so you can start querying immediately. If you wish to re-process the documents with different chunking settings, you can clear the database and re-process them through the System Info page in the UI or using the `/clear-db` and `/process` API endpoints.
+>    **Why Option A is recommended**: Running Ollama in a container with CPU-only is noticeably slow, with responses taking 15-30+ seconds. With Ollama installed directly on your host machine, you'll get significantly faster responses (3-8 seconds) and easier GPU acceleration if available. See the ["Host Ollama Setup"](#host-ollama-setup) section for installation instructions.
+>
+> 2. **Pre-populated Database**: The ChromaDB database comes pre-populated with embeddings for all the documents in the `rag-documents` directory, so you can start querying immediately. If you wish to re-process the documents with different chunking settings, you can clear the database and re-process them through the System Info page in the UI or using the `/clear-db` and `/process` API endpoints.
 
 A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB, and generates AI responses based on the most relevant content. The system includes both an API backend and a web-based user interface.
 
