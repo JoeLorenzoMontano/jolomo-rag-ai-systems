@@ -7,7 +7,7 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 This application implements a full-stack Retrieval-Augmented Generation (RAG) pipeline with these key components:
 
 - **API Backend** (FastAPI): Provides RESTful endpoints for document processing, embedding generation, vector storage, querying, and system health monitoring
-- **Web Frontend** (Flask): Offers an intuitive interface for querying documents and visualizing results with source attribution
+- **Web Frontend** (Flask): Offers both a simple chat interface with conversation memory and an advanced query interface with detailed source attribution
 - **Vector Database** (ChromaDB): Persistent database that stores document embeddings and enables semantic similarity search
 - **LLM Service** (Ollama): Local inference server that runs open-source LLMs without requiring cloud API access
   - Uses LLaMA2 (7B) for generating responses (configurable)
@@ -63,6 +63,12 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
 ### Accessing the Services
 
 - **Web UI**: http://localhost:5000
+  - **Home**: Index page with all available tools
+  - **Chat**: Simple conversational interface with memory
+  - **Advanced Query**: Detailed interface with classification details and full source content
+  - **Process Documents**: Document processing interface
+  - **Chunks Explorer**: Browse and filter document chunks
+  - **System Information**: View system health and manage domain terms
 - **API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 - **ChromaDB**: http://localhost:8001 (direct database access)
@@ -100,6 +106,15 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
     - `web_search`: Whether to augment with web search results (null for auto-classification, true or false to explicitly set)
     - `web_results_count`: Number of web search results to include (default: 5)
     - `explain_classification`: Whether to include query classification explanation (default: false)
+    - `enhance_query`: Whether to enhance the query for better retrieval (default: true)
+
+- **POST /chat**: Chat endpoint that processes queries while maintaining conversation history
+  - Request body:
+    - `messages`: Array of message objects with 'role' and 'content' fields (roles: 'user', 'assistant')
+    - `n_results`: Number of results to return (default: 3)
+    - `combine_chunks`: Whether to combine chunks from the same document (default: true)
+    - `web_search`: Whether to augment with web search results (null for auto-classification)
+    - `web_results_count`: Number of web search results to include (default: 3)
     - `enhance_query`: Whether to enhance the query for better retrieval (default: true)
 
 #### Domain Term Management
@@ -229,6 +244,8 @@ The system uses an intelligent classification mechanism to determine the optimal
    - **Document Source**: Used when query contains domain-specific terminology or matches existing content well
    - **Web Search Source**: Used when query contains general knowledge questions outside document scope
    - **Hybrid Approach**: Used when confidence is moderate and both sources may contribute
+   - **Conversation Context**: Used for follow-up questions that reference previous exchanges
+   - **Hybrid Conversation**: Combines conversation history with lightweight document retrieval
 
 3. **Query Enhancement** (enabled by default):
    - **Expands Acronyms and Abbreviations**: Translates shortened forms to improve matching
@@ -237,7 +254,13 @@ The system uses an intelligent classification mechanism to determine the optimal
    - **Identifies Implied Questions**: Recognizes implicit information needs
    - **Handles Variations**: Overcomes issues with apostrophes, plurals, and capitalization
 
-4. **Classification Visualization**:
+4. **Conversation Follow-up Detection**:
+   - Detects references to previous conversation (e.g., "Tell me more about point #2")
+   - Identifies short queries that are likely follow-ups to previous responses
+   - Recognizes pronouns and referential language patterns
+   - Intelligently decides when to retrieve new information vs. use conversation history
+
+5. **Classification Visualization**:
    - Toggle "Show Classification Details" to see how your query was classified
    - Displays matched domain terms and confidence scores
    - Shows a visual breakdown of the classification decision
