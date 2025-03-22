@@ -51,36 +51,15 @@ For detailed information about all available API endpoints and their parameters,
 
 **API Documentation**: http://localhost:8000/docs
 
-### Using Host Machine's Ollama
+### Using Containerized Ollama (Alternative Setup)
 
-The default `docker-compose.yml` is already configured to use Ollama from your host machine:
-
-1. Make sure Ollama is installed and running on your host machine
-2. Create or edit your `.env` file with your LLM/embedding model settings
-3. Start the services with the default command: 
-
-```bash
-docker-compose up -d
-```
-
-This setup directs API requests to your host's Ollama installation and doesn't run a containerized Ollama. Benefits include:
-
-- Uses your existing Ollama models (no need to re-download them)
-- Leverages your host's GPU setup
-- Easier management of Ollama models (pull, list, remove from host)
-- Lower container resource usage
-- **Significantly faster inference speeds**
-
-For macOS/Windows, the host Ollama will be accessed at `host.docker.internal:11434`.
-For Linux, the special `host-gateway` setting enables access to the host machine.
-
-If you want to run Ollama within Docker instead of using the host machine installation, use:
+By default, the system is configured to use Ollama installed on your host machine. If you don't want to install Ollama locally, you can run it in a container instead:
 
 ```bash
 docker-compose -f docker-compose.docker.ollama.yml up -d
 ```
 
-Note that running Ollama in a container may be significantly slower, especially on CPU-only machines.
+**Note**: Running Ollama in a container is typically significantly slower, especially on CPU-only machines, and is not recommended for the review process.
 ## Key Features
 
 - **Smart Document Chunking**: Automatically splits documents into semantic chunks for optimal retrieval
