@@ -1,5 +1,5 @@
 """
-Document processing service.
+Content processing service.
 
 This module handles document processing, chunking, and embedding operations.
 """
@@ -18,8 +18,8 @@ from services.database_service import DatabaseService
 from services.job_service import JobService, JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED
 from core.utils import clean_filename
 
-class DocumentService:
-    """Service for processing and managing documents."""
+class ContentProcessingService:
+    """Service for processing and managing document content."""
     
     def __init__(self, 
                 db_service: DatabaseService,
@@ -32,7 +32,7 @@ class DocumentService:
                 chunk_overlap: int = 100,
                 enable_chunking: bool = True):
         """
-        Initialize the document processing service.
+        Initialize the content processing service.
         
         Args:
             db_service: Database service for storage

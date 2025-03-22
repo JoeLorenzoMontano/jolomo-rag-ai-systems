@@ -15,7 +15,7 @@ from core.config import (
 )
 from services.database_service import DatabaseService
 from services.job_service import JobService
-from services.document_service import DocumentService
+from services.content_processing_service import ContentProcessingService
 from services.query_service import QueryService
 from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
@@ -60,8 +60,8 @@ def _create_services() -> None:
         logger.info("No Serper API key provided, web search will be unavailable")
     _services["web_search_client"] = web_search_client
     
-    # Initialize document service
-    document_service = DocumentService(
+    # Initialize content processing service
+    content_processing_service = ContentProcessingService(
         db_service=db_service,
         job_service=job_service,
         ollama_client=ollama_client,
@@ -72,7 +72,7 @@ def _create_services() -> None:
         chunk_overlap=CHUNK_OVERLAP,
         enable_chunking=ENABLE_CHUNKING
     )
-    _services["document_service"] = document_service
+    _services["content_processing_service"] = content_processing_service
     
     # Initialize query service
     query_service = QueryService(
@@ -111,9 +111,16 @@ def get_job_service() -> JobService:
     """Get the job tracking service."""
     return get_service("job_service")
 
-def get_document_service() -> DocumentService:
-    """Get the document processing service."""
-    return get_service("document_service")
+def get_document_service() -> ContentProcessingService:
+    """Get the content processing service. 
+    
+    Note: This function is kept for backward compatibility but uses the content processing service.
+    """
+    return get_service("content_processing_service")
+
+def get_content_processing_service() -> ContentProcessingService:
+    """Get the content processing service."""
+    return get_service("content_processing_service")
 
 def get_query_service() -> QueryService:
     """Get the query processing service."""
