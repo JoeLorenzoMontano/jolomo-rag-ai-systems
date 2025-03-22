@@ -32,32 +32,16 @@ class QueryClassifier:
         self.confidence_threshold = confidence_threshold
         self.logger = logging.getLogger(__name__)
         
-        # Default DuploCloud terminology for query classification
-        self.default_product_terms = [
-            # Core concepts
-            "duplocloud", "duplo", "tenant", "infrastructure", "plan",
-            
-            # Services
-            "service", "app service", "cloud service", "kubernetes",
-            "docker", "lambda", "ecs", "microservice",
-            
-            # Cloud resources
-            "vpc", "subnet", "security group", "load balancer",
-            "s3", "rds", "redis", "elasticsearch", "kafka",
-            
-            # Monitoring and security
-            "diagnostics", "logs", "metrics", "alarms", "audit trail",
-            "kibana", "grafana", "compliance",
-            
-            # Configuration
-            "resource quota", "iam role", "dns", "config settings",
-            "namespace", "template"
-        ]
+        # Initialize empty product terms
+        self.product_terms = []
         
         # Extract domain terms from ChromaDB if provided
-        self.product_terms = self.default_product_terms.copy()
         if db_collection:
             self.update_terms_from_db(db_collection)
+        
+        # Ensure we have at least some minimal terms if no documents are found
+        if not self.product_terms:
+            self.product_terms = ["duplocloud", "tenant", "infrastructure"]
             
     def update_terms_from_db(self, db_collection):
         """
@@ -77,15 +61,15 @@ class QueryClassifier:
             doc_text = " ".join(all_docs["documents"])
             extracted_terms = self._extract_important_terms(doc_text)
             
-            # Merge with default terms, keeping originals and adding new ones
-            self.product_terms = list(set(self.default_product_terms + extracted_terms))
+            # Set the product terms to the extracted terms
+            self.product_terms = extracted_terms
             
             self.logger.info(f"Updated product terms from ChromaDB: Found {len(self.product_terms)} terms")
             
         except Exception as e:
             self.logger.error(f"Error extracting terms from ChromaDB: {e}")
-            # Fall back to default terms
-            self.product_terms = self.default_product_terms.copy()
+            # Fall back to minimal terms
+            self.product_terms = ["duplocloud", "tenant", "infrastructure"]
             
     def _extract_important_terms(self, text, min_length=4, max_terms=50):
         """
