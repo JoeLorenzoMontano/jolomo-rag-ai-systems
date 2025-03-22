@@ -146,7 +146,7 @@ doc_processor = DocumentProcessor(
 )
 
 # Initialize Query Classifier for determining when to use web search
-# Pass the ChromaDB collection to extract domain-specific terms
+# Pass the ChromaDB collection and Ollama client to extract domain-specific terms
 query_classifier = QueryClassifier(confidence_threshold=0.6, db_collection=db_collection)
 
 # Initialize PDF extractor
@@ -506,21 +506,24 @@ def process_documents_task(
         
         print(f"Job {job_id}: Processed {len(all_chunks)} chunks from {len(source_files)} source files")
         
-        # After processing documents, refresh the domain terms
+        # After processing documents, refresh the domain terms using LLM
         term_update_status = None
         try:
             # Get document count before refresh
             prev_term_count = len(query_classifier.product_terms)
             
-            # Refresh terms from ChromaDB
-            query_classifier.update_terms_from_db(db_collection)
+            # Use LLM-powered extraction via Ollama
+            print(f"Job {job_id}: Refreshing domain terms using LLM extraction")
+            query_classifier.update_terms_from_db(db_collection, ollama_client)
             
             # Get updated term count
             new_term_count = len(query_classifier.product_terms)
             term_update_status = {
                 "previous_term_count": prev_term_count,
                 "new_term_count": new_term_count,
-                "terms_updated": True
+                "extraction_method": "LLM-powered",
+                "terms_updated": True,
+                "sample_terms": query_classifier.product_terms[:10] if query_classifier.product_terms else []
             }
         except Exception as e:
             print(f"Job {job_id}: Error refreshing domain terms: {e}")
@@ -812,23 +815,25 @@ async def query_documents(
 
 @app.post("/refresh-terms", summary="Refresh domain terms", description="Refreshes the domain-specific terms used for query classification based on current document content.")
 async def refresh_domain_terms():
-    """Refresh the domain-specific terms used in query classification"""
+    """Refresh the domain-specific terms used in query classification using LLM extraction"""
     try:
         # Get document count before refresh
         prev_term_count = len(query_classifier.product_terms)
         
-        # Refresh terms from ChromaDB
-        query_classifier.update_terms_from_db(db_collection)
+        # Refresh terms from ChromaDB using Ollama
+        print("Using Ollama for domain term extraction")
+        query_classifier.update_terms_from_db(db_collection, ollama_client)
         
         # Get updated term count
         new_term_count = len(query_classifier.product_terms)
         
         return {
             "status": "success",
-            "message": "Domain terms refreshed successfully",
+            "message": "Domain terms refreshed successfully using LLM-powered extraction",
+            "extraction_method": "LLM-powered",
             "previous_term_count": prev_term_count,
             "new_term_count": new_term_count,
-            "sample_terms": query_classifier.product_terms[:10]  # Show first 10 terms as a sample
+            "sample_terms": query_classifier.product_terms[:20]  # Show first 20 terms as a sample
         }
     except Exception as e:
         return {
@@ -1158,21 +1163,24 @@ def process_single_file_task(job_id: str, file_path: str):
                 with job_lock:
                     processing_jobs[job_id]["failed_chunks"] = failed
         
-        # Update domain terms
+        # Update domain terms using LLM
         term_update_status = None
         try:
             # Get document count before refresh
             prev_term_count = len(query_classifier.product_terms)
             
-            # Refresh terms from ChromaDB
-            query_classifier.update_terms_from_db(db_collection)
+            # Use LLM-powered extraction via Ollama
+            print(f"Job {job_id}: Refreshing domain terms using LLM extraction")
+            query_classifier.update_terms_from_db(db_collection, ollama_client)
             
             # Get updated term count
             new_term_count = len(query_classifier.product_terms)
             term_update_status = {
                 "previous_term_count": prev_term_count,
                 "new_term_count": new_term_count,
-                "terms_updated": True
+                "extraction_method": "LLM-powered",
+                "terms_updated": True,
+                "sample_terms": query_classifier.product_terms[:10] if query_classifier.product_terms else []
             }
         except Exception as e:
             print(f"Job {job_id}: Error refreshing domain terms: {e}")
