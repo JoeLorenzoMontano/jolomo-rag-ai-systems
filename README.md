@@ -6,7 +6,7 @@
 >    - **Option A (Recommended)**: `docker-compose up -d` - Uses Ollama installed on your host machine
 >    - **Option B (Slower)**: `docker-compose -f docker-compose.docker.ollama.yml up -d` - Runs Ollama in a container
 >
->    **Why Option A is recommended**: Running Ollama in a container with CPU-only is noticeably slow, with responses taking 15-30+ seconds. With Ollama installed directly on your host machine, you'll get significantly faster responses (3-8 seconds) and easier GPU acceleration if available. See the ["Host Ollama Setup"](#host-ollama-setup) section for installation instructions.
+>    **Why Option A is recommended**: Running Ollama in a container with CPU-only is noticeably slow, with responses taking 15-30+ seconds. With Ollama installed directly on your host machine, you'll get significantly faster responses (3-8 seconds) and easier GPU acceleration if available. See the ["Ollama Setup Options"](#ollama-setup-options) section for installation instructions.
 >
 > 2. **Pre-populated Database**: The ChromaDB database comes pre-populated with embeddings for all the documents in the `rag-documents` directory, so you can start querying immediately. If you wish to re-process the documents with different chunking settings, you can clear the database and re-process them through the System Info page in the UI or using the `/clear-db` and `/process` API endpoints.
 
@@ -68,31 +68,37 @@ For detailed information about all available API endpoints and their parameters,
 
 **API Documentation**: http://localhost:8000/docs
 
-### Alternative: Containerized Ollama
+## Ollama Setup Options
 
-If you prefer not to install Ollama on your host machine, you can use the containerized version instead:
+### Option 1: Host Ollama Setup (Recommended)
+
+For optimal performance, we recommend installing Ollama directly on your host machine:
+
+1. Install Ollama by following the [official installation guide](https://ollama.com/download)
+2. Start Ollama on your host (it should automatically run as a service)
+3. Use the default docker-compose file, which connects to your host's Ollama:
+   ```bash
+   docker-compose up -d
+   ```
+
+**Benefits**:
+- Significantly faster response times (3-8 seconds vs 15-30+ seconds)
+- Automatic GPU acceleration if available on your system
+- More stable performance for large language models
+
+### Option 2: Containerized Ollama
+
+If you prefer not to install software on your host, you can run Ollama in a container:
 
 ```bash
 docker-compose -f docker-compose.docker.ollama.yml up -d
 ```
 
-**Note**: This alternative approach is typically significantly slower, especially on CPU-only machines, and is not recommended for the review process.
+**Important**: This approach is significantly slower, especially on CPU-only machines, and is not recommended for reviewers who want to experience the system's optimal performance.
+
 ## Key Features
 
 - **Smart Document Chunking**: Automatically splits documents into semantic chunks for optimal retrieval
 - **Query Classification**: Intelligently determines when to use documents vs. web search
 - **Conversation Memory**: Maintains context for natural follow-up questions
 - **Web Search Integration**: Optional integration with internet search for questions outside your document scope
-
-## Host Ollama Setup
-
-For optimal performance, especially on machines with NVIDIA GPUs, it's recommended to install Ollama directly on your host machine:
-
-1. Install Ollama on your host machine by following the [official installation guide](https://ollama.com/download)
-2. Start Ollama on your host (it should automatically run as a service)
-3. Use the default docker-compose file, which maps port 11434 from your host to the containers:
-   ```bash
-   docker-compose up -d
-   ```
-
-This configuration allows the containerized API to communicate with your host's Ollama instance, providing significantly faster inference, especially when using GPU acceleration.
