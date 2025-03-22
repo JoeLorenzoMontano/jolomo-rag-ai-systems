@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     depends_on:
       - chromadb
+      - ollama
     volumes:
       - ./rag-documents:/app/data
     environment:
@@ -46,7 +47,7 @@ services:
     container_name: chromadb
     restart: always
     volumes:
-      - chromadb_data:/chroma/chroma
+      - ./pre-populated-db/chromadb:/chroma/chroma  # Use local pre-populated data
     ports:
       - "8001:8000"
     environment:
@@ -59,8 +60,33 @@ services:
     networks:
       - app-network
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=/root/.ollama/models
+      - CUDA_VISIBLE_DEVICES=${OLLAMA_GPU_DEVICES:-""}
+      - OLLAMA_GPU_LAYERS=${OLLAMA_GPU_LAYERS:-0}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${OLLAMA_GPU_COUNT:-0}
+              capabilities: [gpu]
+              options:
+                mode: ${OLLAMA_GPU_MODE:-""}
+    networks:
+      - app-network
+
 volumes:
-  chromadb_data:
+  ollama_data:
 
 networks:
   app-network:
