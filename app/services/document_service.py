@@ -7,7 +7,6 @@ This module handles document processing, chunking, and embedding operations.
 import os
 import logging
 from typing import Dict, List, Any, Tuple, Optional, Generator
-import re
 import shutil
 import io
 
@@ -17,6 +16,7 @@ from utils.pdf_extractor import PDFExtractor
 from utils.query_classifier import QueryClassifier
 from services.database_service import DatabaseService
 from services.job_service import JobService, JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED
+from core.utils import clean_filename
 
 class DocumentService:
     """Service for processing and managing documents."""
@@ -607,7 +607,7 @@ class DocumentService:
             Path to the saved file
         """
         # Generate a safe filename to prevent path traversal
-        safe_filename = re.sub(r'[^\w\-\.]', '_', filename)
+        safe_filename = clean_filename(filename)
         file_path = os.path.join(self.docs_folder, safe_filename)
         
         # Save the file
