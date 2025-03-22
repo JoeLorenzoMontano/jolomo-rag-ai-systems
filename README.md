@@ -4,19 +4,6 @@
 
 A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB, and generates AI responses based on the most relevant content. The system includes both an API backend and a web-based user interface.
 
-## Architecture Overview
-
-This application implements a full-stack Retrieval-Augmented Generation (RAG) pipeline with these key components:
-
-- **API Backend** (FastAPI): Provides RESTful endpoints for document processing, embedding generation, vector storage, querying, and system health monitoring
-- **Web Frontend** (Flask): Offers both a simple chat interface with conversation memory and an advanced query interface with detailed source attribution
-- **Vector Database** (ChromaDB): Persistent database that stores document embeddings and enables semantic similarity search
-- **LLM Service** (Ollama): Local inference server that runs open-source LLMs without requiring cloud API access
-  - Uses LLaMA2 (7B) for generating responses (configurable)
-  - Uses all-minilm:l6-v2 for generating embeddings (configurable)
-- **Document Chunking System**: Intelligently splits documents into semantic chunks with configurable parameters
-- **Web Search Integration** (Optional): Supplements RAG results with internet-sourced information via Serper.dev API
-
 ## Setup and Usage
 
 ### Prerequisites and Requirements
@@ -46,10 +33,10 @@ This application implements a full-stack Retrieval-Augmented Generation (RAG) pi
    ```
 5. Wait for all services to initialize (this may take a few minutes on first run due to the models needing to be downloaded)
 6. Access the web interface at http://localhost:5000
-7. Process documents:
+7. Start querying immediately! ChromaDB comes pre-populated with embeddings for the documents in the `rag-documents` directory
+8. (Optional) Process additional documents:
    - Go to http://localhost:5000/process and click "Process Documents", or
    - Use API directly: `curl -X POST http://localhost:8000/process`
-8. Start querying your documents through the web UI or API
 
 ### Accessing the Services
 
