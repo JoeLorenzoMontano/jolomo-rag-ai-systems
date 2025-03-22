@@ -2,7 +2,7 @@
 
 > **⚠️ IMPORTANT FOR REVIEWERS**: 
 >
-> 1. Running Ollama in a container with CPU-only will be noticeably slow. For better performance, install Ollama directly on your host machine and use the default `docker-compose up -d` command, which is already configured to use your host's Ollama installation. Host machine installation typically provides easier GPU access and significantly faster response times. See the ["Using Host Machine's Ollama"](#using-host-machines-ollama) section for details.
+> 1. Running Ollama in a container with CPU-only will be noticeably slow. For better performance, install Ollama directly on your host machine and use the default `docker-compose up -d` command, which is already configured to use your host's Ollama installation. Host machine installation typically provides easier GPU access and significantly faster response times. See the ["Host Ollama Setup"](#host-ollama-setup) section for details.
 >
 > 2. The ChromaDB database comes pre-populated with embeddings for all the documents in the `rag-documents` directory, so you can start querying immediately. If you wish to re-process the documents with different chunking settings, you can clear the database and re-process them through the System Info page in the UI or using the `/clear-db` and `/process` API endpoints.
 
@@ -64,15 +64,15 @@ For detailed information about all available API endpoints and their parameters,
 
 **API Documentation**: http://localhost:8000/docs
 
-### Using Containerized Ollama
+### Alternative: Containerized Ollama
 
-If you don't want to install Ollama on your host machine, you can use the containerized version instead:
+If you prefer not to install Ollama on your host machine, you can use the containerized version instead:
 
 ```bash
 docker-compose -f docker-compose.docker.ollama.yml up -d
 ```
 
-**Note**: This approach is typically significantly slower, especially on CPU-only machines, and is not recommended for the review process.
+**Note**: This alternative approach is typically significantly slower, especially on CPU-only machines, and is not recommended for the review process.
 ## Key Features
 
 - **Smart Document Chunking**: Automatically splits documents into semantic chunks for optimal retrieval
@@ -80,7 +80,7 @@ docker-compose -f docker-compose.docker.ollama.yml up -d
 - **Conversation Memory**: Maintains context for natural follow-up questions
 - **Web Search Integration**: Optional integration with internet search for questions outside your document scope
 
-## Using Host Machine's Ollama
+## Host Ollama Setup
 
 For optimal performance, especially on machines with NVIDIA GPUs, it's recommended to install Ollama directly on your host machine:
 
