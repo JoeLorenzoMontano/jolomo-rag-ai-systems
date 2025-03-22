@@ -162,23 +162,26 @@ class QueryClassifier:
     
     def classify(self, 
                 query: str, 
-                doc_scores: Optional[List[float]] = None) -> Tuple[str, float, Dict[str, Any]]:
+                doc_scores: Optional[List[float]] = None,
+                conversation_history: Optional[List[Dict[str, str]]] = None) -> Tuple[str, float, Dict[str, Any]]:
         """
         Classify a query to determine the best source for answering.
         
         Args:
             query: The user's query text
             doc_scores: Relevance scores for retrieved documents (if available)
+            conversation_history: Optional conversation history for follow-up detection
             
         Returns:
             Tuple containing:
-            - source_type: "documents", "web", or "hybrid"
+            - source_type: "documents", "web", "conversation", "hybrid", or "hybrid_conversation"
             - confidence: confidence score (0-1)
             - metadata: Additional classification data
         """
         scores = {
             "documents": 0.0,
-            "web": 0.0
+            "web": 0.0,
+            "conversation": 0.0
         }
         explanations = []
         
@@ -194,6 +197,38 @@ class QueryClassifier:
             scores["documents"] = 0.7 * scores["documents"] + 0.3 * retrieval_score
             explanations.append(f"Document relevance: {retrieval_score:.2f}")
         
+        # Check for follow-up indicators if conversation history is provided
+        reference_items = []
+        if conversation_history and len(conversation_history) >= 2:
+            # Detect reference indicators like "those", "above", item numbers, etc.
+            reference_indicators = [
+                r'\b(the|these|those|it|that|this|they|them)\b',
+                r'\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|last|previous|above|mentioned)\b',
+                r'\b(you|your|you\'ve|you\'re|you\'d)\b',
+                r'\b(item|point|bullet|number|step)\s*[#]?\s*(\d+)',
+                r'[?]\s*(and|also|additionally)\b',
+                r'\b(can you|please|tell me more|elaborate|explain|details)\b'
+            ]
+            
+            for pattern in reference_indicators:
+                if re.search(pattern, query, re.IGNORECASE):
+                    scores["conversation"] += 0.15  # Each match increases score
+                    match = re.search(pattern, query, re.IGNORECASE)
+                    if match:
+                        reference_items.append(match.group(0))
+            
+            # Check if query is very short (likely a follow-up)
+            words = query.split()
+            if len(words) <= 5:
+                scores["conversation"] += 0.3
+                explanations.append(f"Short query ({len(words)} words), likely follow-up")
+                
+            # Cap the conversation score
+            scores["conversation"] = min(0.95, scores["conversation"])
+            
+            if reference_items:
+                explanations.append(f"Found reference indicators: {', '.join(reference_items)}")
+        
         # Calculate web score (inverse of document score)
         scores["web"] = 1.0 - scores["documents"]
         
@@ -202,8 +237,18 @@ class QueryClassifier:
         hybrid_score = 1.0 - 2.0 * abs(scores["documents"] - 0.5)
         scores["hybrid"] = max(0.0, hybrid_score)
         
-        # Determine the source to use based on scores and thresholds
-        if scores["documents"] >= self.confidence_threshold:
+        # Determine the source to use based on scores and context
+        if scores["conversation"] > 0.7:
+            # High confidence this is a follow-up question
+            source_type = "conversation"
+            confidence = scores["conversation"]
+            explanations.append("Using conversation history as primary context")
+        elif scores["conversation"] > 0.4 and scores["documents"] > 0.4:
+            # Both conversation and documents relevant
+            source_type = "hybrid_conversation"
+            confidence = (scores["documents"] + scores["conversation"]) / 2
+            explanations.append("Using documents with conversation context priority")
+        elif scores["documents"] >= self.confidence_threshold:
             source_type = "documents"
             confidence = scores["documents"]
         elif scores["web"] >= self.confidence_threshold:
@@ -217,7 +262,8 @@ class QueryClassifier:
         metadata = {
             "scores": scores,
             "explanations": explanations,
-            "matched_terms": term_matches
+            "matched_terms": term_matches,
+            "reference_items": reference_items if reference_items else []
         }
         
         return source_type, confidence, metadata

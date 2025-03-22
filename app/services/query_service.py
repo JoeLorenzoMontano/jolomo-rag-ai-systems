@@ -337,17 +337,65 @@ class QueryService:
             Dictionary with the response and other metadata
         """
         try:
-            # Generate a chat response using the Ollama chat API
-            response = self.ollama_client.generate_chat_response(
-                messages=messages,
-                context=context
+            # Get the latest user message
+            latest_user_message = None
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    latest_user_message = msg.get("content", "")
+                    break
+                    
+            if not latest_user_message:
+                return {
+                    "status": "error",
+                    "response": "No user message found in conversation history",
+                    "error": "Missing user query"
+                }
+                
+            # Classify the query to determine if it needs new RAG context or just conversation history
+            source_type, confidence, classification_metadata = self.query_classifier.classify(
+                query=latest_user_message,
+                conversation_history=messages
             )
+            
+            self.logger.info(f"Query classified as '{source_type}' with {confidence:.2f} confidence")
+            
+            # Decide how to handle based on classification
+            if source_type == "conversation":
+                # This is a follow-up that doesn't need new RAG context
+                self.logger.info("Using conversation history without new RAG context")
+                # Use the existing conversation without adding new context
+                response = self.ollama_client.generate_chat_response(
+                    messages=messages,
+                    context=None
+                )
+            elif source_type == "hybrid_conversation":
+                # Use both conversation history and RAG context, but with conversation taking priority
+                self.logger.info("Using conversation history with light RAG context integration")
+                # Only include essential RAG context to avoid overriding conversation flow
+                if context:
+                    # Use context but reduce its importance
+                    response = self.ollama_client.generate_chat_response(
+                        messages=messages,
+                        context=context
+                    )
+                else:
+                    response = self.ollama_client.generate_chat_response(messages=messages)
+            else:
+                # Standard RAG approach with full context
+                self.logger.info("Using full RAG context with conversation history")
+                response = self.ollama_client.generate_chat_response(
+                    messages=messages,
+                    context=context
+                )
             
             # Prepare the response object
             response_data = {
                 "status": "success",
                 "response": response,
-                "messages": messages
+                "messages": messages,
+                "source_type": source_type,
+                "confidence": confidence,
+                "classification": classification_metadata
             }
             
             return response_data
