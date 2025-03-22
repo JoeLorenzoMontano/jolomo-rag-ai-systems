@@ -138,3 +138,91 @@ class OllamaClient:
         Removes `<think>...</think>` sections from the AI output.
         """
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        
+    def generate_semantic_enrichment(self, chunk_text: str, chunk_id: str) -> str:
+        """
+        Generates a semantic enrichment for a document chunk to improve retrieval quality.
+        This enrichment includes key concepts, alternative terminology, and related concepts.
+        
+        Args:
+            chunk_text: The original text chunk to enhance
+            chunk_id: Identifier for the chunk (used for logging/debugging)
+            
+        Returns:
+            Enhanced text that can be added to the original for better matching
+        """
+        # Check if the model exists, if not pull it
+        current_model = self.model
+        self._ensure_model_exists(current_model)
+        
+        # Prompt designed to produce a concise, retrieval-focused enrichment
+        prompt = f"""You are a knowledge augmentation system that enhances text chunks for semantic search.
+Given the following document chunk, extract and generate:
+1. Key concepts and entities (2-4 items)
+2. Alternative terminology or synonyms for important terms (3-5 items)
+3. A very concise summary (1-2 sentences)
+4. Related concepts that might be queried but aren't explicitly mentioned (2-3 items)
+
+Format your response using these exact headings, with each section as a concise bullet list:
+
+DOCUMENT CHUNK:
+```
+{chunk_text}
+```
+
+Your response MUST be in this exact format:
+"""
+
+        payload = {
+            "model": current_model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.1,  # Use low temperature for consistent, focused output
+                "num_predict": 500   # Limit to ~500 tokens for concise enrichment
+            }
+        }
+
+        try:
+            response = requests.post(f"{self.base_url}/api/generate", json=payload)
+            response.raise_for_status()
+            result = response.json()
+            enrichment = result.get("response", "").strip()
+            
+            # Process the enrichment to clean it up
+            processed_enrichment = self._process_enrichment(enrichment)
+            
+            print(f"Generated semantic enrichment for chunk {chunk_id} ({len(processed_enrichment)} chars)")
+            return processed_enrichment
+            
+        except Exception as e:
+            print(f"Error generating semantic enrichment for chunk {chunk_id}: {e}")
+            return ""  # Return empty string on error
+    
+    def _process_enrichment(self, enrichment: str) -> str:
+        """
+        Processes the generated enrichment to ensure it's clean and useful for retrieval.
+        """
+        # Remove any "DOCUMENT CHUNK" sections that might have been generated
+        enrichment = re.sub(r'DOCUMENT CHUNK:.*?```', '', enrichment, flags=re.DOTALL)
+        
+        # Remove code block syntax
+        enrichment = enrichment.replace("```", "")
+        
+        # Remove any thinking indicators
+        enrichment = self._remove_think_regions(enrichment)
+        
+        # If any Markdown-style headings are missing, add them
+        required_sections = [
+            "KEY CONCEPTS AND ENTITIES", 
+            "ALTERNATIVE TERMINOLOGY", 
+            "SUMMARY", 
+            "RELATED CONCEPTS"
+        ]
+        
+        # Check if each section exists, otherwise prepend it
+        for section in required_sections:
+            if section not in enrichment:
+                enrichment += f"\n\n{section}:\n- N/A"
+                
+        return enrichment.strip()

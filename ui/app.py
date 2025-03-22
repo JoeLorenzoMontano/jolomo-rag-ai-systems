@@ -50,6 +50,7 @@ def process_documents():
     min_size = request.form.get('min_size')
     overlap = request.form.get('overlap')
     enable_chunking = request.form.get('enable_chunking')
+    enhance_chunks = request.form.get('enhance_chunks')
     
     # Build query parameters
     params = {}
@@ -61,6 +62,8 @@ def process_documents():
         params['overlap'] = int(overlap)
     if enable_chunking is not None:
         params['enable_chunking'] = enable_chunking.lower() == 'true'
+    if enhance_chunks is not None:
+        params['enhance_chunks'] = enhance_chunks.lower() == 'true'
     
     try:
         # Call the API

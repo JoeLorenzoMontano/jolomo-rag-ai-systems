@@ -292,6 +292,7 @@
                                         </h2>
                                         <div id="collapse${index}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" aria-labelledby="heading${index}" data-bs-parent="#sourcesAccordion">
                                             <div class="accordion-body">
+                                                ${metadata && metadata.has_enrichment ? '<div class="badge bg-info mb-2">Semantically Enhanced</div>' : ''}
                                                 <pre class="source-text">${doc}</pre>
                                             </div>
                                         </div>

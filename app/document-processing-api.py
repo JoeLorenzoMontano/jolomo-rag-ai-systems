@@ -234,13 +234,18 @@ async def process_documents(
     chunk_size: int = Query(None, description="Override max chunk size (chars)"),
     min_size: int = Query(None, description="Override min chunk size (chars)"),
     overlap: int = Query(None, description="Override chunk overlap (chars)"),
-    enable_chunking: bool = Query(None, description="Override chunking enabled setting")
+    enable_chunking: bool = Query(None, description="Override chunking enabled setting"),
+    enhance_chunks: bool = Query(True, description="Generate additional content with Ollama to improve retrieval")
 ):
     # Apply overrides if provided without modifying globals
     temp_max_chunk_size = chunk_size if chunk_size is not None else MAX_CHUNK_SIZE
     temp_min_chunk_size = min_size if min_size is not None else MIN_CHUNK_SIZE
     temp_chunk_overlap = overlap if overlap is not None else CHUNK_OVERLAP
     temp_enable_chunking = enable_chunking if enable_chunking is not None else ENABLE_CHUNKING
+    
+    # Log if semantic enrichment is enabled
+    if enhance_chunks:
+        print(f"Semantic chunk enrichment is ENABLED - will use Ollama to enhance chunks for better retrieval")
     
     # Log chunking settings for this run
     if (chunk_size is not None or min_size is not None or 
@@ -317,6 +322,7 @@ async def process_documents(
             batch_embeddings = []
             valid_docs = []
             valid_ids = []
+            valid_metadatas = []
             
             for j, doc in enumerate(batch_docs):
                 try:
@@ -326,18 +332,51 @@ async def process_documents(
                         failed += 1
                         failed_files.append(f"{batch_ids[j]} (empty)")
                         continue
+                    
+                    # Determine whether to use original or enriched text for embedding
+                    processing_text = doc
+                    metadata = {"original_text": doc}
+                    
+                    # Generate semantic enrichment if enabled
+                    if enhance_chunks:
+                        try:
+                            # Generate enrichment for the chunk
+                            enrichment = ollama_client.generate_semantic_enrichment(doc, batch_ids[j])
+                            
+                            if enrichment.strip():
+                                # Create the enhanced text by combining original with enrichment
+                                enhanced_text = f"{doc}\n\nENRICHMENT:\n{enrichment}"
+                                
+                                # Use the enhanced text for embedding
+                                processing_text = enhanced_text
+                                
+                                # Store both original and enrichment in metadata
+                                metadata["has_enrichment"] = True
+                                metadata["enrichment"] = enrichment
+                                
+                                print(f"Enhanced chunk {batch_ids[j]} with semantic enrichment (+{len(enrichment)} chars)")
+                        except Exception as e:
+                            print(f"Error generating enrichment for {batch_ids[j]}: {e}")
+                            # Continue with original text on error
+                            metadata["has_enrichment"] = False
+                            metadata["enrichment_error"] = str(e)
+                    else:
+                        metadata["has_enrichment"] = False
                         
                     # Attempt to generate embedding
-                    print(f"Processing chunk {batch_ids[j]} ({len(doc)} chars)")
-                    embedding = ollama_client.generate_embedding(doc)
+                    print(f"Processing chunk {batch_ids[j]} ({len(processing_text)} chars)")
+                    embedding = ollama_client.generate_embedding(processing_text)
                     
                     # Verify embedding is valid (not None and has values)
                     if embedding is None or len(embedding) == 0:
                         raise ValueError("Empty embedding returned")
                         
                     batch_embeddings.append(embedding)
-                    valid_docs.append(doc)
+                    valid_docs.append(processing_text)  # Store the enhanced text
                     valid_ids.append(batch_ids[j])
+                    
+                    # Add the custom metadata to our metadatas list
+                    valid_metadatas.append(metadata)
                 except Exception as e:
                     print(f"Error generating embedding for {batch_ids[j]}: {e}")
                     failed += 1
@@ -352,29 +391,33 @@ async def process_documents(
                 continue
                 
             # Create metadata with source file information
-            metadatas = []
-            for chunk_id in batch_ids:
-                # Split the ID to extract source file path
+            # Use our valid_metadatas that already contains enrichment info
+            final_metadatas = []
+            
+            # Add source file information to each metadata entry
+            for i, chunk_id in enumerate(valid_ids):
+                # Get the base metadata with enrichment info that was already created
+                metadata = valid_metadatas[i]
+                
+                # Add source file information
                 if "#chunk-" in chunk_id:
                     source_file = chunk_id.split("#chunk-")[0]
                     chunk_num = chunk_id.split("#chunk-")[1]
-                    metadatas.append({
-                        "filename": source_file,
-                        "chunk_id": chunk_id,
-                        "chunk_num": chunk_num
-                    })
+                    metadata["filename"] = source_file
+                    metadata["chunk_id"] = chunk_id
+                    metadata["chunk_num"] = chunk_num
                 else:
                     # No chunks, just the file
-                    metadatas.append({
-                        "filename": chunk_id
-                    })
+                    metadata["filename"] = chunk_id
+                    
+                final_metadatas.append(metadata)
             
-            # Add to ChromaDB
+            # Add to ChromaDB - use valid_docs which contains the enhanced text
             db_collection.add(
-                ids=batch_ids,
+                ids=valid_ids,
                 embeddings=batch_embeddings,
-                metadatas=metadatas,
-                documents=batch_docs
+                metadatas=final_metadatas,
+                documents=valid_docs
             )
             
             successful += len(batch_embeddings)
@@ -407,6 +450,12 @@ async def process_documents(
             "error": str(e)
         }
     
+    # Prepare enrichment status information
+    enrichment_status = {
+        "enabled": enhance_chunks,
+        "chunks_processed": successful
+    }
+    
     # Return detailed status
     if failed > 0:
         return {
@@ -418,7 +467,8 @@ async def process_documents(
             "failed_items": failed_files,
             "chunking_enabled": temp_enable_chunking,
             "chunk_size": temp_max_chunk_size,
-            "term_extraction": term_update_status
+            "term_extraction": term_update_status,
+            "semantic_enrichment": enrichment_status
         }
     else:
         return {
@@ -428,7 +478,8 @@ async def process_documents(
             "successful_chunks": successful,
             "chunking_enabled": temp_enable_chunking,
             "chunk_size": temp_max_chunk_size,
-            "term_extraction": term_update_status
+            "term_extraction": term_update_status,
+            "semantic_enrichment": enrichment_status
         }
 
 @app.get("/query", summary="Retrieve relevant documents", description="Query ChromaDB for the most relevant document based on input text.")
