@@ -392,6 +392,10 @@ def process_documents_task(
                                 # Process this file's chunks immediately
                                 print(f"Job {job_id}: Processing {len(chunks)} chunks from file {rel_path}")
                                 
+                                # Initialize counters outside the try/except block
+                                successful = 0  # Global counter for successful chunks
+                                failed = 0      # Global counter for failed chunks
+                                
                                 # Process each chunk from this file
                                 file_successful = 0
                                 file_failed = 0
@@ -405,6 +409,7 @@ def process_documents_task(
                                         if not chunk_text.strip():
                                             print(f"Job {job_id}: Skipping empty chunk: {chunk_id}")
                                             file_failed += 1
+                                            failed += 1
                                             failed_files.append(f"{chunk_id} (empty)")
                                             continue
                                             
@@ -1159,6 +1164,10 @@ def process_single_file_task(job_id: str, file_path: str):
         with job_lock:
             processing_jobs[job_id]["progress"] = 50
         
+        # Initialize counters
+        successful = 0
+        failed = 0
+                
         # Process chunks with context
         chunk_pairs = list(zip(all_chunks, all_chunk_ids))
         
