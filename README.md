@@ -95,127 +95,15 @@ docker-compose -f docker-compose.docker.ollama.yml up -d
 
 Note that running Ollama in a container may be significantly slower, especially on CPU-only machines.
 
-## Project Structure
-
-```
-.
-├── .env                            # Environment variables (create this file)
-├── app/                            # API Backend (FastAPI)
-│   ├── Dockerfile                  # Container definition for API
-│   ├── main.py                     # Main FastAPI application
-│   ├── core/                       # Core configuration and utilities
-│   │   ├── config.py               # Application configuration
-│   │   ├── dependencies.py         # Dependency injection container
-│   │   └── utils.py                # Common utility functions
-│   ├── models/                     # Data models
-│   │   └── schemas.py              # Pydantic models for requests/responses
-│   ├── routers/                    # API route handlers
-│   │   ├── documents.py            # Document processing endpoints
-│   │   ├── health.py               # Health check endpoints
-│   │   ├── jobs.py                 # Job tracking endpoints
-│   │   ├── query.py                # Query processing endpoints
-│   │   └── terms.py                # Domain term endpoints
-│   ├── services/                   # Business logic services
-│   │   ├── content_processing_service.py # Document processing service
-│   │   ├── database_service.py     # ChromaDB operations
-│   │   ├── job_service.py          # Background job tracking
-│   │   └── query_service.py        # Query processing service
-│   ├── utils/                      # Utility modules
-│   │   ├── ollama_client.py        # Ollama API client
-│   │   ├── text_chunker.py         # Document chunking strategy
-│   │   ├── query_classifier.py     # Query classification system
-│   │   ├── pdf_extractor.py        # PDF text extraction
-│   │   └── web_search.py           # Web search integration
-│   ├── requirements.txt            # Python dependencies
-│   └── startup.sh                  # API startup script
-├── docker-compose.yml              # Container orchestration config
-├── rag-documents/                  # Document collection to process
-│   ├── *.md                        # Markdown documents
-│   └── tenant/                     # Example subdirectory
-├── ui/                             # Web Frontend (Flask)
-│   ├── Dockerfile                  # Container definition for UI
-│   ├── app.py                      # Main Flask application
-│   ├── requirements.txt            # Python dependencies
-│   ├── static/                     # Static assets
-│   └── templates/                  # HTML templates
-```
-
-### Key Files and Components
-
-- **main.py**: Main entry point for the FastAPI application
-- **docker-compose.yml**: Defines all services, networking, and volume configuration
-- **core/dependencies.py**: Service dependency injection container
-- **services/content_processing_service.py**: Manages document processing, chunking, and embedding
-- **services/query_service.py**: Handles query processing and response generation
-- **services/database_service.py**: Interface to ChromaDB for vector storage
-- **utils/text_chunker.py**: Implements the document chunking strategy
-- **utils/ollama_client.py**: Handles communication with Ollama LLM service for embeddings and completions
-- **utils/query_classifier.py**: Intelligently determines when to use document retrieval vs. web search
-- **utils/web_search.py**: Implements the web search functionality using Serper.dev API
-- **ui/app.py**: Flask application for the web interface
-
 ## Working with Documents
 
-- Documents must be in Markdown (.md) format
-- Place all documents in the `rag-documents` directory or its subdirectories
-- Documents will be recursively processed from all subdirectories
-- File paths become document identifiers in the system
-- Process documents using the web UI or API endpoint
+- Place documents in Markdown (.md) format in the `rag-documents` directory
+- Process documents using the Web UI or API endpoint
+- Query your documents through the chat interface or advanced query page
 
-### Document Chunking Strategy
+## Key Features
 
-The system intelligently splits documents into chunks for optimal retrieval:
-
-1. First splits by paragraph boundaries (double newlines)
-2. For large paragraphs, further splits by sentence boundaries
-3. Maintains overlap between chunks to preserve context
-4. Respects minimum chunk size to avoid tiny fragments
-
-This approach balances semantic coherence with efficient vector retrieval, leading to more relevant search results.
-
-### Query Classification System
-
-The system uses an intelligent classification mechanism to determine the optimal information source:
-
-1. **Dynamic Domain Term Extraction**: Extracts important terminology from the document corpus
-   - Analyzes document frequency and significance
-   - Combines with predefined domain terms
-   - Automatically updates when new documents are processed
-   - Extracts both single terms and multi-word phrases
-
-2. **Source Selection Logic**:
-   - **Document Source**: Used when query contains domain-specific terminology or matches existing content well
-   - **Web Search Source**: Used when query contains general knowledge questions outside document scope
-   - **Hybrid Approach**: Used when confidence is moderate and both sources may contribute
-   - **Conversation Context**: Used for follow-up questions that reference previous exchanges
-   - **Hybrid Conversation**: Combines conversation history with lightweight document retrieval
-
-3. **Query Enhancement** (enabled by default):
-   - **Expands Acronyms and Abbreviations**: Translates shortened forms to improve matching
-   - **Adds Alternative Terms**: Includes synonyms and related concepts
-   - **Normalizes Text**: Removes possessives and expands contractions for better matching
-   - **Identifies Implied Questions**: Recognizes implicit information needs
-   - **Handles Variations**: Overcomes issues with apostrophes, plurals, and capitalization
-
-4. **Conversation Follow-up Detection**:
-   - Detects references to previous conversation (e.g., "Tell me more about point #2")
-   - Identifies short queries that are likely follow-ups to previous responses
-   - Recognizes pronouns and referential language patterns
-   - Intelligently decides when to retrieve new information vs. use conversation history
-
-5. **Classification Visualization**:
-   - Toggle "Show Classification Details" to see how your query was classified
-   - Displays matched domain terms and confidence scores
-   - Shows a visual breakdown of the classification decision
-
-The classifier automatically refreshes its domain term knowledge when documents are processed, ensuring it stays up-to-date with the content collection. You can also manually refresh terms or view the current term list using the dedicated API endpoints.
-
-## Limitations
-
-- **Content Types**: Currently only processes text in Markdown format
-- **Language Support**: Best performance with English language content
-- **Token Limits**: There are context size limits (typically ~4000 tokens)
-- **Response Quality**: Depends on the quality and relevance of the document collection
-- **Inference Speed**: Local models are slower than cloud-based alternatives
-- **No Authentication**: The system has no built-in security features and should not be exposed publicly
-- **Web Search Limitations**: Web search relies on the Serper.dev API which may have rate limits or costs
+- **Smart Document Chunking**: Automatically splits documents into semantic chunks for optimal retrieval
+- **Query Classification**: Intelligently determines when to use documents vs. web search
+- **Conversation Memory**: Maintains context for natural follow-up questions
+- **Web Search Integration**: Optional integration with internet search for questions outside your document scope
