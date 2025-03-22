@@ -163,12 +163,12 @@ class OllamaClient:
         if prev_chunk_text:
             # Include a shortened version of previous chunk for context
             prev_context = prev_chunk_text[:500] + "..." if len(prev_chunk_text) > 500 else prev_chunk_text
-            context_parts.append(f"PREVIOUS CONTEXT:\n{prev_context}")
+            context_parts.append(f"PREVIOUS CHUNK:\n{prev_context}")
             
         if next_chunk_text:
             # Include a shortened version of next chunk for context
             next_context = next_chunk_text[:500] + "..." if len(next_chunk_text) > 500 else next_chunk_text
-            context_parts.append(f"FOLLOWING CONTEXT:\n{next_context}")
+            context_parts.append(f"NEXT CHUNK:\n{next_context}")
             
         # Join context sections if any exist
         context_section = "\n\n".join(context_parts)
@@ -176,31 +176,37 @@ class OllamaClient:
         
         if context_section:
             context_instruction = f"""
-I'm providing surrounding context to help you understand the meaning, but focus your summary on the MAIN CHUNK.
+            I'm providing surrounding chunks to help you understand the content's flow, but focus your summary on the MAIN CHUNK.
 
-{context_section}
-"""
+            {context_section}
+            """
         
-        # Prompt designed to produce a concise, contextual summary
-        prompt = f"""You are a semantic document analyzer that creates precise, meaningful summaries for document chunks.
+        # Improved prompt for more useful and focused summaries
+        prompt = f"""You are an expert document analyzer that extracts key information for semantic search systems.
 
-Your task is to create a contextual summary for document retrieval that captures the key meaning and information of the main chunk.
+        Your task is to create a precise summary that will help match this content to relevant queries.
 
-{context_instruction}
+        {context_instruction}
 
-MAIN CHUNK:
-```
-{chunk_text}
-```
+        MAIN CHUNK:
+        ```
+        {chunk_text}
+        ```
 
-Generate a concise summary (2-3 sentences) that:
-1. Captures the key information and meaning of the main chunk
-2. Includes important terms, entities and concepts that someone might search for
-3. Provides context about how this information fits into the larger document
-4. Uses clear, direct language focused on retrieval
-
-Format your response as a single paragraph without headings or bullet points:
-"""
+        Create a concise summary (2-3 sentences) that:
+        1. Highlights the core subject matter and key points in the chunk
+        2. Includes specific terminology, entities, and technical concepts present in the text
+        3. Uses domain-specific vocabulary that would appear in related search queries
+        4. Describes what problems or questions this content helps solve
+        5. Avoids filler phrases like "this section describes" or "this document covers"
+        
+        Important guidelines:
+        - Focus on factual content, not document structure
+        - Start directly with the key information, not introductory phrases
+        - Include specific technical terms, not general descriptions
+        - Use natural language without bullet points or headings
+        - Maintain technical accuracy
+        """
 
         payload = {
             "model": current_model,
@@ -238,8 +244,16 @@ Format your response as a single paragraph without headings or bullet points:
         # Remove any thinking indicators
         summary = self._remove_think_regions(summary)
         
-        # Remove any "SUMMARY:" prefix that might have been generated
-        summary = re.sub(r'^SUMMARY:\s*', '', summary, flags=re.IGNORECASE)
+        # Remove any common prefixes that might have been generated
+        common_prefixes = [
+            r'^SUMMARY:\s*',
+            r'^KEY POINTS:\s*',
+            r'^MAIN CONTENT:\s*',
+            r'^OVERVIEW:\s*',
+            r'^DESCRIPTION:\s*'
+        ]
+        for prefix_pattern in common_prefixes:
+            summary = re.sub(prefix_pattern, '', summary, flags=re.IGNORECASE)
         
         # Remove any markdown or heading syntax
         summary = re.sub(r'^#+\s+', '', summary, re.MULTILINE)
@@ -247,11 +261,20 @@ Format your response as a single paragraph without headings or bullet points:
         # Convert bullet points to regular text if present
         summary = re.sub(r'^\s*[-*•]\s+', '', summary, flags=re.MULTILINE)
         
-        # Ensure the summary starts with "This section" or similar contextual phrase if it doesn't already
-        if not re.match(r'^(This|The|These|In this)', summary, re.IGNORECASE):
-            summary = "This section " + summary[0].lower() + summary[1:]
+        # Remove filler phrases that might have been generated
+        filler_start_phrases = [
+            r'^This section describes\s+',
+            r'^This document covers\s+',
+            r'^This part explains\s+',
+            r'^This content details\s+'
+        ]
+        for phrase_pattern in filler_start_phrases:
+            summary = re.sub(phrase_pattern, '', summary, flags=re.IGNORECASE)
         
-        # Add a prefix to make it clear this is a summary
-        summary = "CONTEXT SUMMARY: " + summary
+        # If the summary still starts with "This section" or similar, replace it with something more useful
+        summary = re.sub(r'^(This section|This document|This text|This content)\s+', '', summary, flags=re.IGNORECASE)
+        
+        # Add a prefix to make it clear this is a summary (but one that won't pollute term extraction)
+        summary = "SEMANTIC CONTEXT: " + summary
                 
         return summary.strip()

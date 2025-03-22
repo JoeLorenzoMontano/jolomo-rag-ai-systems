@@ -117,7 +117,8 @@ class QueryClassifier:
             self.logger.warning(f"Could not filter stopwords: {e}")
         
         # Filter out short words, image file references, and enrichment-related terms
-        enrichment_terms = ['enrichment', 'context', 'summary', 'section', 'paragraph']
+        enrichment_terms = ['enrichment', 'context', 'summary', 'section', 'paragraph', 'semantic',
+                           'describes', 'covers', 'explains', 'details', 'document', 'content']
         words = [word for word in words if len(word) >= min_length and 
                  not any(ext in word for ext in ['png', 'jpg', 'jpeg', 'gif']) and
                  word not in enrichment_terms]
@@ -130,8 +131,13 @@ class QueryClassifier:
         
         # Also extract bigrams (pairs of consecutive words)
         bigrams = []
-        enrichment_bigrams = ['context summary', 'this section', 'section describes', 'summary this', 
-                              'this document', 'document describes', 'covers the', 'details how']
+        enrichment_bigrams = [
+            'context summary', 'this section', 'section describes', 'summary this', 
+            'this document', 'document describes', 'covers the', 'details how',
+            'semantic context', 'describes how', 'explains how', 'document covers',
+            'document explains', 'section covers', 'section explains', 'content explains',
+            'content covers', 'content details', 'content describes', 'key information'
+        ]
         for i in range(len(words) - 1):
             bigram = words[i] + " " + words[i+1]
             if len(bigram) >= min_length and bigram not in enrichment_bigrams:
