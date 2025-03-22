@@ -19,57 +19,6 @@
         
         <h1 class="mb-4">Process Documents</h1>
         
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
-                        <div>
-                            <i class="bi bi-upload"></i> Upload File
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <form id="upload-form" enctype="multipart/form-data">
-                            <div class="mb-3">
-                                <label for="file-upload" class="form-label">Select a file to upload</label>
-                                <input class="form-control" type="file" id="file-upload" accept=".txt,.pdf">
-                                <div class="form-text">Supported file types: TXT, PDF</div>
-                            </div>
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="checkbox" id="process-immediately" checked>
-                                <label class="form-check-label" for="process-immediately">
-                                    Process immediately after upload
-                                </label>
-                            </div>
-                            <div class="d-flex">
-                                <button type="submit" class="btn btn-warning me-2" id="upload-button">
-                                    <span id="upload-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                                    Upload File
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-                        <div>
-                            <i class="bi bi-trash"></i> Database Management
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <p class="mb-3">Clear all documents from the vector database. <strong>This action cannot be undone.</strong></p>
-                        <button type="button" class="btn btn-danger" id="clear-db-button" data-bs-toggle="modal" data-bs-target="#clearDbModal">
-                            <i class="bi bi-trash"></i> Clear Database
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
                 <i class="bi bi-gear"></i> Processing Configuration
@@ -88,7 +37,7 @@
                                 <div class="row mb-3">
                                     <div class="col-md-4">
                                         <label for="chunk-size" class="form-label">Maximum Chunk Size (characters)</label>
-                                        <input type="number" class="form-control" id="chunk-size" value="250" min="100">
+                                        <input type="number" class="form-control" id="chunk-size" value="500" min="100">
                                         <div class="form-text">Maximum size of each document chunk</div>
                                     </div>
                                     
@@ -100,7 +49,7 @@
                                     
                                     <div class="col-md-4">
                                         <label for="overlap" class="form-label">Chunk Overlap (characters)</label>
-                                        <input type="number" class="form-control" id="overlap" value="75" min="0">
+                                        <input type="number" class="form-control" id="overlap" value="100" min="0">
                                         <div class="form-text">Overlap between adjacent chunks</div>
                                     </div>
                                 </div>
@@ -130,6 +79,57 @@
             </div>
         </div>
         
+        <div class="row mb-4">
+            <!-- Upload File Card -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-upload"></i> Upload File
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form id="upload-form" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="file-upload" class="form-label">Select a file to upload</label>
+                                <input class="form-control" type="file" id="file-upload" accept=".txt,.pdf">
+                                <div class="form-text">Supported file types: TXT, PDF</div>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="process-immediately" checked>
+                                <label class="form-check-label" for="process-immediately">
+                                    Process immediately after upload
+                                </label>
+                            </div>
+                            <div class="d-flex">
+                                <button type="submit" class="btn btn-warning me-2" id="upload-button">
+                                    <span id="upload-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    Upload File
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Management Card -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-trash"></i> Database Management
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-3">Clear all documents from the vector database. <strong>This action cannot be undone.</strong></p>
+                        <button type="button" class="btn btn-danger" id="clear-db-button" data-bs-toggle="modal" data-bs-target="#clearDbModal">
+                            <i class="bi bi-trash"></i> Clear Database
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Clear DB Confirmation Modal -->
         <div class="modal fade" id="clearDbModal" tabindex="-1" aria-labelledby="clearDbModalLabel" aria-hidden="true">
             <div class="modal-dialog">
@@ -149,6 +149,40 @@
                             Clear Database
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- All Jobs Card -->
+        <div class="card mb-4 d-none" id="all-jobs-card">
+            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi bi-list-check"></i> Recent Jobs
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-light" id="refresh-jobs-btn">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Job ID</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Files</th>
+                                <th>Success</th>
+                                <th>Failed</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobs-table-body">
+                            <!-- Jobs will be populated here -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -228,39 +262,6 @@
             </div>
         </div>
         
-        <!-- All Jobs Card -->
-        <div class="card mb-4 d-none" id="all-jobs-card">
-            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
-                <div>
-                    <i class="bi bi-list-check"></i> Recent Jobs
-                </div>
-                <div>
-                    <button class="btn btn-sm btn-light" id="refresh-jobs-btn">
-                        <i class="bi bi-arrow-clockwise"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead>
-                            <tr>
-                                <th>Job ID</th>
-                                <th>Status</th>
-                                <th>Progress</th>
-                                <th>Files</th>
-                                <th>Success</th>
-                                <th>Failed</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="jobs-table-body">
-                            <!-- Jobs will be populated here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

@@ -284,15 +284,6 @@
                         </div>
                     `;
                     
-                    if (data.api.collection) {
-                        html += `
-                            <div class="alert alert-info">
-                                <strong>Collection Status:</strong> ${data.api.collection.status}
-                                <strong>Document Count:</strong> ${data.api.collection.document_count}
-                            </div>
-                        `;
-                    }
-                    
                     healthContent.innerHTML = html;
                 } catch (error) {
                     healthContent.innerHTML = `<div class="alert alert-danger">Error loading health info: ${error.message}</div>`;
