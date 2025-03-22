@@ -8,11 +8,19 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 
 ### Prerequisites and Requirements
 
+**Required:**
 - **Docker Engine** and **Docker Compose**
-- **Ollama** installed on your host machine (recommended for better performance)
-- Internet access for pulling container images, LLM models, and (optionally) web search functionality
-- (Optional) NVIDIA GPU with compatible drivers for GPU acceleration
-- Documents must be in Markdown (.md) format and placed in the `rag-documents` directory
+- Internet access (for pulling container images and models)
+
+**Performance Options:**
+- **Option 1 (Recommended):** Install **Ollama** on your host machine and use the default docker-compose file
+- **Option 2:** Use the containerized Ollama setup with `docker-compose.docker.ollama.yml` (slower, but no host installation required)
+
+**Optional:**
+- NVIDIA GPU with compatible drivers (for faster inference)
+- Serper.dev API key (for web search integration)
+
+**Note:** Sample documents in Markdown format are already included in the `rag-documents` directory with pre-populated embeddings.
 
 ### Quickstart Guide
 
@@ -51,15 +59,15 @@ For detailed information about all available API endpoints and their parameters,
 
 **API Documentation**: http://localhost:8000/docs
 
-### Using Containerized Ollama (Alternative Setup)
+### Using Containerized Ollama
 
-By default, the system is configured to use Ollama installed on your host machine. If you don't want to install Ollama locally, you can run it in a container instead:
+If you don't want to install Ollama on your host machine, you can use the containerized version instead:
 
 ```bash
 docker-compose -f docker-compose.docker.ollama.yml up -d
 ```
 
-**Note**: Running Ollama in a container is typically significantly slower, especially on CPU-only machines, and is not recommended for the review process.
+**Note**: This approach is typically significantly slower, especially on CPU-only machines, and is not recommended for the review process.
 ## Key Features
 
 - **Smart Document Chunking**: Automatically splits documents into semantic chunks for optimal retrieval
