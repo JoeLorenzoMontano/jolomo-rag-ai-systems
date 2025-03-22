@@ -35,12 +35,6 @@
                             <label for="n-results" class="form-label">Number of Results</label>
                             <input type="number" class="form-control" id="n-results" value="3" min="1" max="10">
                             <div class="form-text">Number of document chunks to retrieve</div>
-                            
-                            <div class="form-check form-switch mt-3">
-                                <input class="form-check-input" type="checkbox" id="enhance-query" checked>
-                                <label class="form-check-label" for="enhance-query">Enhance Query</label>
-                                <div class="form-text">Improve retrieval by expanding acronyms and adding alternative terms</div>
-                            </div>
                         </div>
                         
                         <div class="col-md-6">
@@ -57,6 +51,12 @@
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="show-classification" value="auto" checked>
                                 <label class="form-check-label" for="show-classification">Show Classification Details</label>
+                            </div>
+
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="enhance-query" checked>
+                                <label class="form-check-label" for="enhance-query">Enhance Query</label>
+                                <div class="form-text">Improve retrieval by expanding acronyms and adding alternative terms</div>
                             </div>
                             
                             <div id="web-search-options" class="mt-2">
