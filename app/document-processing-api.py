@@ -1222,6 +1222,7 @@ def process_single_file_task(job_id: str, file_path: str):
 @app.post("/clear-db", summary="Clear the database", description="Clear all documents from ChromaDB.")
 async def clear_database():
     """Clear all documents from the database"""
+    global db_collection
     try:
         # Get current document count for reporting
         doc_count = db_collection.count()
@@ -1237,7 +1238,6 @@ async def clear_database():
             else:
                 # Fallback method: recreate the collection
                 try:
-                    global db_collection
                     # First try to delete the entire collection
                     chroma_client.delete_collection("documents")
                     print("Collection deleted")
