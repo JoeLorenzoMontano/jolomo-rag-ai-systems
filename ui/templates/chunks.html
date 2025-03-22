@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Chunks Explorer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- Include highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/markdown.min.js"></script>
+</head>
+<body>
+    <div class="container-fluid mt-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Document Chunks Explorer</li>
+            </ol>
+        </nav>
+        
+        <h1 class="mb-4">Document Chunks Explorer</h1>
+        
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-funnel"></i> Filter Chunks
+                            </div>
+                            <div>
+                                <span class="badge bg-light text-dark" id="total-chunks-badge">0 chunks</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form id="filter-form" class="row g-3">
+                            <div class="col-md-5">
+                                <label for="filename-filter" class="form-label">Filename Filter</label>
+                                <input type="text" class="form-control" id="filename-filter" placeholder="Filter by filename">
+                            </div>
+                            <div class="col-md-5">
+                                <label for="content-filter" class="form-label">Content Filter</label>
+                                <input type="text" class="form-control" id="content-filter" placeholder="Filter by content">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="limit-select" class="form-label">Limit</label>
+                                <select class="form-select" id="limit-select">
+                                    <option value="10">10</option>
+                                    <option value="20" selected>20</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+                            <div class="col-12 d-flex justify-content-between mt-3">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-search"></i> Search
+                                </button>
+                                <div>
+                                    <button type="button" id="prev-page-btn" class="btn btn-outline-secondary" disabled>
+                                        <i class="bi bi-arrow-left"></i> Previous
+                                    </button>
+                                    <span id="pagination-info" class="mx-2">Page 1</span>
+                                    <button type="button" id="next-page-btn" class="btn btn-outline-secondary" disabled>
+                                        Next <i class="bi bi-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="loading-indicator" class="text-center mb-4 d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading chunks...</p>
+        </div>
+        
+        <div id="error-message" class="alert alert-danger d-none">
+            <i class="bi bi-exclamation-triangle"></i> Error loading chunks
+        </div>
+        
+        <div id="no-chunks-message" class="alert alert-info d-none">
+            <i class="bi bi-info-circle"></i> No chunks found matching your criteria
+        </div>
+        
+        <div id="chunks-container">
+            <!-- Chunks will be loaded here -->
+        </div>
+        
+        <template id="chunk-template">
+            <div class="card mb-4 chunk-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong class="chunk-filename">Filename</strong>
+                        <span class="badge bg-secondary ms-2 chunk-id">ID</span>
+                    </div>
+                    <div>
+                        <span class="badge enrichment-badge bg-success">Enhanced</span>
+                        <span class="badge bg-light text-dark dimensions-badge">384 dim</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h5>Original Text</h5>
+                        <pre class="chunk-content language-markdown"><code></code></pre>
+                    </div>
+                    <div class="enrichment-container">
+                        <h5>Semantic Enrichment</h5>
+                        <pre class="chunk-enrichment language-markdown"><code></code></pre>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Elements
+            const filterForm = document.getElementById('filter-form');
+            const filenameFilter = document.getElementById('filename-filter');
+            const contentFilter = document.getElementById('content-filter');
+            const limitSelect = document.getElementById('limit-select');
+            const prevPageBtn = document.getElementById('prev-page-btn');
+            const nextPageBtn = document.getElementById('next-page-btn');
+            const paginationInfo = document.getElementById('pagination-info');
+            const totalChunksBadge = document.getElementById('total-chunks-badge');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const errorMessage = document.getElementById('error-message');
+            const noChunksMessage = document.getElementById('no-chunks-message');
+            const chunksContainer = document.getElementById('chunks-container');
+            const chunkTemplate = document.getElementById('chunk-template');
+            
+            // Pagination state
+            let currentOffset = 0;
+            let currentLimit = parseInt(limitSelect.value);
+            let totalChunks = 0;
+            
+            // Load chunks with optional filtering
+            async function loadChunks() {
+                // Show loading indicator
+                loadingIndicator.classList.remove('d-none');
+                errorMessage.classList.add('d-none');
+                noChunksMessage.classList.add('d-none');
+                chunksContainer.innerHTML = '';
+                
+                // Get filter values
+                const filename = filenameFilter.value.trim();
+                const content = contentFilter.value.trim();
+                const limit = limitSelect.value;
+                
+                try {
+                    // Build query parameters
+                    const params = new URLSearchParams();
+                    params.append('limit', limit);
+                    params.append('offset', currentOffset);
+                    
+                    if (filename) {
+                        params.append('filename', filename);
+                    }
+                    
+                    if (content) {
+                        params.append('content', content);
+                    }
+                    
+                    // Fetch chunks
+                    const response = await fetch(`/api/chunks?${params.toString()}`);
+                    const data = await response.json();
+                    
+                    // Hide loading indicator
+                    loadingIndicator.classList.add('d-none');
+                    
+                    if (data.status === 'error') {
+                        errorMessage.textContent = data.message || 'Error loading chunks';
+                        errorMessage.classList.remove('d-none');
+                        return;
+                    }
+                    
+                    // Update total and pagination
+                    totalChunks = data.total_in_db;
+                    totalChunksBadge.textContent = `${totalChunks} chunks in DB, ${data.chunks_returned} displayed`;
+                    
+                    // Enable/disable pagination buttons
+                    updatePaginationControls();
+                    
+                    // Show no chunks message if needed
+                    if (!data.chunks || data.chunks.length === 0) {
+                        noChunksMessage.classList.remove('d-none');
+                        return;
+                    }
+                    
+                    // Render chunks
+                    renderChunks(data.chunks);
+                    
+                } catch (error) {
+                    console.error('Error loading chunks:', error);
+                    loadingIndicator.classList.add('d-none');
+                    errorMessage.textContent = `Error: ${error.message}`;
+                    errorMessage.classList.remove('d-none');
+                }
+            }
+            
+            // Render chunks
+            function renderChunks(chunks) {
+                // Clear container
+                chunksContainer.innerHTML = '';
+                
+                // Create and append chunk cards
+                chunks.forEach(chunk => {
+                    // Clone template
+                    const chunkCard = document.importNode(chunkTemplate.content, true).firstElementChild;
+                    
+                    // Set chunk data
+                    chunkCard.querySelector('.chunk-filename').textContent = chunk.filename;
+                    chunkCard.querySelector('.chunk-id').textContent = `ID: ${chunk.id.substring(0, 8)}...`;
+                    
+                    // Set enrichment badge visibility
+                    const enrichmentBadge = chunkCard.querySelector('.enrichment-badge');
+                    const enrichmentContainer = chunkCard.querySelector('.enrichment-container');
+                    
+                    if (chunk.has_enrichment) {
+                        enrichmentBadge.classList.remove('d-none');
+                        enrichmentContainer.classList.remove('d-none');
+                        chunkCard.querySelector('.chunk-enrichment code').textContent = chunk.enrichment;
+                    } else {
+                        enrichmentBadge.classList.add('d-none');
+                        enrichmentContainer.classList.add('d-none');
+                    }
+                    
+                    // Set dimensions badge
+                    chunkCard.querySelector('.dimensions-badge').textContent = `${chunk.embedding_dimension} dim`;
+                    
+                    // Set content
+                    chunkCard.querySelector('.chunk-content code').textContent = chunk.text;
+                    
+                    // Add to container
+                    chunksContainer.appendChild(chunkCard);
+                });
+                
+                // Apply syntax highlighting
+                document.querySelectorAll('pre code').forEach(block => {
+                    hljs.highlightElement(block);
+                });
+            }
+            
+            // Update pagination controls
+            function updatePaginationControls() {
+                // Calculate current page
+                const currentPage = Math.floor(currentOffset / currentLimit) + 1;
+                const totalPages = Math.ceil(totalChunks / currentLimit);
+                
+                // Update page info
+                paginationInfo.textContent = `Page ${currentPage} of ${totalPages || 1}`;
+                
+                // Enable/disable previous button
+                prevPageBtn.disabled = currentOffset <= 0;
+                
+                // Enable/disable next button
+                nextPageBtn.disabled = currentOffset + currentLimit >= totalChunks;
+            }
+            
+            // Event listeners
+            filterForm.addEventListener('submit', event => {
+                event.preventDefault();
+                currentOffset = 0; // Reset to first page
+                currentLimit = parseInt(limitSelect.value);
+                loadChunks();
+            });
+            
+            prevPageBtn.addEventListener('click', () => {
+                currentOffset = Math.max(0, currentOffset - currentLimit);
+                loadChunks();
+            });
+            
+            nextPageBtn.addEventListener('click', () => {
+                currentOffset += currentLimit;
+                loadChunks();
+            });
+            
+            limitSelect.addEventListener('change', () => {
+                currentLimit = parseInt(limitSelect.value);
+                currentOffset = 0; // Reset to first page
+                loadChunks();
+            });
+            
+            // Initial load
+            loadChunks();
+        });
+    </script>
+    
+    <style>
+        pre.chunk-content, pre.chunk-enrichment {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 0.25rem;
+        }
+        
+        .chunk-card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            transition: box-shadow 0.3s ease;
+        }
+        
+        .chunk-card:hover {
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+    </style>
+</body>
+</html>

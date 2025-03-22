@@ -1,0 +1,62 @@
+services:
+  api:
+    build: ./app
+    container_name: document-processing-service
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - chromadb
+    volumes:
+      - ./rag-documents:/app/data
+    environment:
+      # Ollama configuration - using host Ollama
+      - OLLAMA_BASE_URL=${HOST_OLLAMA:-http://host.docker.internal:11434}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - MODEL=${MODEL}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      # Document chunking settings
+      - ENABLE_CHUNKING=true
+      - MAX_CHUNK_SIZE=1000
+      - MIN_CHUNK_SIZE=200
+      - CHUNK_OVERLAP=100
+      # Web search settings
+      - SERPER_API_KEY=${SERPER_API_KEY}
+    networks:
+      - app-network
+      
+  ui:
+    build: ./ui
+    container_name: document-ui-service
+    restart: always
+    ports:
+      - "5000:5000"
+    depends_on:
+      - api
+    environment:
+      - API_URL=http://api:8000
+    networks:
+      - app-network
+
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: chromadb
+    restart: always
+    volumes:
+      - ./pre-populated-db/chromadb:/chroma/chroma  # Use local pre-populated data
+    ports:
+      - "8001:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ALLOW_RESET=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - CHROMA_SERVER_NOFILE=65535
+      # Pin NumPy to avoid compatibility issues
+      - NUMPY_VERSION=1.26.0
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

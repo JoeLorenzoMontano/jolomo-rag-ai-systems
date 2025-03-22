@@ -1,0 +1,93 @@
+services:
+  api:
+    build: ./app
+    container_name: document-processing-service
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - chromadb
+      - ollama
+    volumes:
+      - ./rag-documents:/app/data
+    environment:
+      # Ollama configuration - use host machine's Ollama
+      - OLLAMA_BASE_URL=${HOST_OLLAMA:-http://host.docker.internal:11434}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - MODEL=${MODEL}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      # Document chunking settings
+      - ENABLE_CHUNKING=true
+      - MAX_CHUNK_SIZE=1000
+      - MIN_CHUNK_SIZE=200
+      - CHUNK_OVERLAP=100
+      # Web search settings
+      - SERPER_API_KEY=${SERPER_API_KEY}
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # For Linux compatibility
+      
+  ui:
+    build: ./ui
+    container_name: document-ui-service
+    restart: always
+    ports:
+      - "5000:5000"
+    depends_on:
+      - api
+    environment:
+      - API_URL=http://api:8000
+    networks:
+      - app-network
+
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: chromadb
+    restart: always
+    volumes:
+      - ./pre-populated-db/chromadb:/chroma/chroma  # Use local pre-populated data
+    ports:
+      - "8001:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ALLOW_RESET=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - CHROMA_SERVER_NOFILE=65535
+      # Pin NumPy to avoid compatibility issues
+      - NUMPY_VERSION=1.26.0
+    networks:
+      - app-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=/root/.ollama/models
+      - CUDA_VISIBLE_DEVICES=${OLLAMA_GPU_DEVICES:-""}
+      - OLLAMA_GPU_LAYERS=${OLLAMA_GPU_LAYERS:-0}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${OLLAMA_GPU_COUNT:-0}
+              capabilities: [gpu]
+              options:
+                mode: ${OLLAMA_GPU_MODE:-""}
+    networks:
+      - app-network
+
+volumes:
+  ollama_data:
+
+networks:
+  app-network:
+    driver: bridge

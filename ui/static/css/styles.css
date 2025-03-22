@@ -1,0 +1,15 @@
+/* Custom styles for the Document Processing UI */
+
+body {
+    background-color: #f8f9fa;
+}
+
+pre.source-text {
+    white-space: pre-wrap;
+    font-size: 0.9rem;
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.3rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
