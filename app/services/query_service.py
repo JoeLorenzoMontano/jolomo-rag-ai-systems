@@ -363,9 +363,25 @@ class QueryService:
             if source_type == "conversation":
                 # This is a follow-up that doesn't need new RAG context
                 self.logger.info("Using conversation history without new RAG context")
-                # Use the existing conversation without adding new context
+                # Use the existing conversation but add a system message to handle follow-ups better
+                system_message = {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful assistant. The user is asking a follow-up question to your previous response.\n"
+                        "- Answer based on your previous responses in this conversation\n"
+                        "- If asked about specific numbered items, points, or details from your previous response, refer to them directly\n"
+                        "- If you didn't previously mention numbered items/points and the user asks about them, politely explain you didn't provide a numbered list\n"
+                        "- If you can't answer the follow-up from the conversation history, say: 'I don't have enough information to answer that specific question.'\n"
+                        "- Be helpful and conversational\n"
+                    )
+                }
+                
+                # Create a copy of messages and insert system message at beginning
+                chat_messages = list(messages)
+                chat_messages.insert(0, system_message)
+                
                 response = self.ollama_client.generate_chat_response(
-                    messages=messages,
+                    messages=chat_messages,
                     context=None
                 )
             elif source_type == "hybrid_conversation":
