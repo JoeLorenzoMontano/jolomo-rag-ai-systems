@@ -35,6 +35,12 @@
                             <label for="n-results" class="form-label">Number of Results</label>
                             <input type="number" class="form-control" id="n-results" value="3" min="1" max="10">
                             <div class="form-text">Number of document chunks to retrieve</div>
+                            
+                            <div class="form-check form-switch mt-3">
+                                <input class="form-check-input" type="checkbox" id="enhance-query" checked>
+                                <label class="form-check-label" for="enhance-query">Enhance Query</label>
+                                <div class="form-text">Improve retrieval by expanding acronyms and adding alternative terms</div>
+                            </div>
                         </div>
                         
                         <div class="col-md-6">
@@ -65,6 +71,12 @@
                         <i class="bi bi-info-circle-fill me-2"></i> 
                         When "Auto-classify" is enabled, the system will intelligently determine 
                         whether to use the document database, web search, or both based on your query content.
+                    </div>
+                    
+                    <div class="alert alert-info mt-2" id="enhance-query-info">
+                        <i class="bi bi-lightbulb-fill me-2"></i> 
+                        When "Enhance Query" is enabled, the system will expand your query with related terms
+                        and alternative phrasings to improve retrieval quality.
                     </div>
                     
                     <button type="submit" class="btn btn-primary" id="query-button">
@@ -150,6 +162,7 @@
                 const webSearch = webSearchCheckbox.checked ? null : false; // null means auto-classify
                 const webResultsCount = document.getElementById('web-results-count').value;
                 const explainClassification = showClassificationCheckbox.checked;
+                const enhanceQuery = document.getElementById('enhance-query').checked;
                 
                 if (!queryText) {
                     alert('Please enter a question');
@@ -188,7 +201,8 @@
                             combine_chunks: combineChunks,
                             web_search: webSearch,
                             web_results_count: webResultsCount,
-                            explain_classification: explainClassification
+                            explain_classification: explainClassification,
+                            enhance_query: enhanceQuery
                         }),
                         signal: controller.signal
                     });
@@ -274,6 +288,16 @@
                             sourcesCard.classList.remove('d-none');
                             
                             let sourcesHtml = '<div class="accordion" id="sourcesAccordion">';
+                            
+                            // Display query enhancement info if available
+                            if (data.query_enhanced && data.enhanced_query) {
+                                sourcesHtml += `
+                                    <div class="alert alert-success mb-3">
+                                        <i class="bi bi-lightbulb-fill me-2"></i> 
+                                        <strong>Query Enhanced:</strong> Your query was enhanced to "${data.enhanced_query}"
+                                    </div>
+                                `;
+                            }
                             
                             // Add vector database sources
                             data.sources.documents.forEach((doc, index) => {

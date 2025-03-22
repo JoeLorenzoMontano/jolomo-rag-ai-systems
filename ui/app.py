@@ -124,7 +124,8 @@ def query_documents():
                 'combine_chunks': combine_chunks,
                 'web_search': web_search,
                 'web_results_count': web_results_count,
-                'explain_classification': explain_classification
+                'explain_classification': explain_classification,
+                'enhance_query': True  # Enable query enhancement
             },
             timeout=None
         )
