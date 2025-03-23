@@ -26,7 +26,7 @@ services:
       - SERPER_API_KEY=${SERPER_API_KEY}
       # Elasticsearch configuration
       - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-false}
+      - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-true}
     networks:
       - app-network
       
