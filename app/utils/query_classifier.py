@@ -87,7 +87,7 @@ class QueryClassifier:
             # Fall back to minimal terms
             self.product_terms = ["duplocloud", "tenant", "infrastructure"]
             
-    def _extract_important_terms(self, text, min_length=4, max_terms=100):
+    def _extract_important_terms(self, text, min_length=4, max_terms=200):
         """
         Extract important domain-specific terms from text
         
@@ -126,8 +126,23 @@ class QueryClassifier:
         # Count word frequencies
         word_counts = Counter(words)
         
-        # Extract the most common terms (excluding very common words)
-        common_terms = [term for term, count in word_counts.most_common(max_terms * 2)]
+        # Find high-frequency words that stand out
+        word_items = word_counts.most_common(max_terms * 2)
+        
+        # Calculate stats for identifying outliers in word frequency
+        if word_items:
+            word_freqs = [count for _, count in word_items]
+            avg_freq = sum(word_freqs) / len(word_freqs)
+            freq_threshold = max(5, avg_freq * 1.5)  # Threshold for "high frequency"
+            
+            # Get high-frequency unigrams (only include those with significant frequency)
+            high_freq_terms = [term for term, count in word_items if count >= freq_threshold]
+            
+            # Get other common unigrams
+            common_terms = [term for term, count in word_items if term not in high_freq_terms]
+        else:
+            high_freq_terms = []
+            common_terms = []
         
         # Also extract bigrams (pairs of consecutive words)
         bigrams = []
@@ -149,8 +164,8 @@ class QueryClassifier:
         # Extract the most common bigrams
         common_bigrams = [term for term, count in bigram_counts.most_common(max_terms)]
         
-        # Combine unigrams and bigrams, prioritizing more specific terms
-        all_terms = common_bigrams + common_terms
+        # Combine terms with priority: high-frequency unigrams, bigrams, then other common terms
+        all_terms = high_freq_terms + common_bigrams + common_terms
         
         # Remove duplicates while preserving order
         unique_terms = []
