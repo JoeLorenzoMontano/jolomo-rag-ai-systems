@@ -20,7 +20,7 @@ CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 
 # Elasticsearch connection settings
 ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
-ELASTICSEARCH_ENABLED = os.getenv("ELASTICSEARCH_ENABLED", "false").lower() == "true"
+ELASTICSEARCH_ENABLED = os.getenv("ELASTICSEARCH_ENABLED", "true").lower() == "true"
 ELASTICSEARCH_INDEX = os.getenv("ELASTICSEARCH_INDEX", "rag-documents")
 
 # Chunking configuration from environment variables with defaults
