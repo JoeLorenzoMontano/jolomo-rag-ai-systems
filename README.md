@@ -12,7 +12,7 @@
 >
 > 3. **API Keys Included**: The provided `.env` file includes my personal Serper.dev API key for web search functionality. You can use it during your review without needing to register for your own key.
 
-A comprehensive RAG (Retrieval-Augmented Generation) system that combines multiple search techniques to deliver more accurate and relevant responses. The system uses a dual-database architecture with ChromaDB (vector embeddings) and Elasticsearch (text search) along with document reranking, providing a powerful and flexible solution that adapts to different query types.
+A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB and indexes in Elasticsearch, and generates AI responses based on the most relevant content. The system combines multiple search techniques to deliver more accurate and relevant responses using a dual-database architecture with ChromaDB (vector embeddings) and Elasticsearch (text search) along with document reranking, providing a powerful and flexible solution that adapts to different query types. The system includes both an API backend and a web-based user interface.
 
 **Key Features**:
 - **Dual-Database Architecture**: Combines ChromaDB's vector search with Elasticsearch's text capabilities
