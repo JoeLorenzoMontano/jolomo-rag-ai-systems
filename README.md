@@ -12,22 +12,23 @@
 >
 > 3. **API Keys Included**: The provided `.env` file includes my personal Serper.dev API key for web search functionality. You can use it during your review without needing to register for your own key.
 
-A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB, and generates AI responses based on the most relevant content. The system includes both an API backend and a web-based user interface.
+A comprehensive RAG (Retrieval-Augmented Generation) system that combines multiple search techniques to deliver more accurate and relevant responses. The system uses a dual-database architecture with ChromaDB (vector embeddings) and Elasticsearch (text search) along with document reranking, providing a powerful and flexible solution that adapts to different query types.
 
 **Key Features**:
-- **Smart Document Chunking**: Semantic chunking for optimal retrieval
-- **Query Classification**: Intelligently routes between document and web search
-- **Conversation Memory**: Maintains context for natural follow-up questions
-- **Web Search Integration**: Augments with internet search for comprehensive answers
-- **Elasticsearch Integration**: Provides powerful text search alongside vector embeddings
-- **Hybrid Search**: Combines vector similarity and text relevance for improved results
-- **Document Reranking**: Uses cross-encoder models via LangChain with BM25 fallback
+- **Dual-Database Architecture**: Combines ChromaDB's vector search with Elasticsearch's text capabilities
+- **Hybrid Search**: Intelligently merges vector similarity and text relevance with configurable weights
+- **Smart Document Chunking**: Semantic chunking and enrichment for optimal retrieval
+- **Document Reranking**: Improves result relevance using cross-encoder models via LangChain
+- **Query Classification**: Automatically routes between document search, web search, or hybrid approaches
+- **Conversation Memory**: Maintains context for natural follow-up questions in chat sessions
+- **Web Search Integration**: Augments with internet search when appropriate for comprehensive answers
 
-**Implemented RAG Techniques**:
-- **Hybrid Retrieval**: Combines dense vector search and sparse BM25 text matching for optimal results
-- **Cross-Encoder Reranking**: Uses transformer-based models to reorder retrieved documents by relevance
+**Advanced RAG Capabilities**:
 - **Query Preprocessing**: Enhances queries by expanding technical terms and acronyms
-- **Adaptive Search**: Automatically selects the optimal search approach based on query characteristics
+- **Fallback Strategies**: Uses BM25 text search when transformer models aren't available
+- **Semantic Filtering**: Uses domain-specific terminology for better classification
+- **Hybrid Result Merging**: Sophisticated algorithm for combining results from multiple sources
+- **Adaptive Search Routing**: Selects the optimal search approach based on query characteristics
 
 ## Setup and Usage
 
