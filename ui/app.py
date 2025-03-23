@@ -116,6 +116,7 @@ def query_documents():
     web_results_count = data.get('web_results_count', 5)
     explain_classification = data.get('explain_classification', False)
     enhance_query = data.get('enhance_query', True)
+    apply_reranking = data.get('apply_reranking', True)  # Default to True
     
     if not query_text:
         return jsonify({"status": "error", "message": "Query text is required"})
@@ -131,7 +132,8 @@ def query_documents():
                 'web_search': web_search,
                 'web_results_count': web_results_count,
                 'explain_classification': explain_classification,
-                'enhance_query': enhance_query
+                'enhance_query': enhance_query,
+                'apply_reranking': apply_reranking
             },
             timeout=None
         )
@@ -152,6 +154,7 @@ def chat_query():
     web_search = data.get('web_search', None)  # None means auto-classify
     web_results_count = data.get('web_results_count', 3)
     enhance_query = data.get('enhance_query', True)
+    apply_reranking = data.get('apply_reranking', True)
     
     # Ensure we have at least one user message
     has_user_message = False
@@ -176,7 +179,8 @@ def chat_query():
                 'combine_chunks': combine_chunks,
                 'web_search': web_search,
                 'web_results_count': web_results_count,
-                'enhance_query': enhance_query
+                'enhance_query': enhance_query,
+                'apply_reranking': apply_reranking
             },
             timeout=None
         )
