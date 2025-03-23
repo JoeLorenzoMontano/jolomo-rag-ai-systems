@@ -11,25 +11,29 @@ from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
 from utils.web_search import WebSearchClient
 from services.database_service import DatabaseService
+from services.elasticsearch_service import ElasticsearchService
 
 class QueryService:
     """Service for processing queries and generating responses."""
     
     def __init__(self, 
                 db_service: DatabaseService,
-                ollama_client: OllamaClient,
-                query_classifier: QueryClassifier,
+                elasticsearch_service: Optional[ElasticsearchService] = None,
+                ollama_client: OllamaClient = None,
+                query_classifier: QueryClassifier = None,
                 web_search_client: Optional[WebSearchClient] = None):
         """
         Initialize the query processing service.
         
         Args:
             db_service: Database service for retrieval
+            elasticsearch_service: Optional Elasticsearch service for hybrid search
             ollama_client: Ollama client for embeddings and responses
             query_classifier: Query classifier for routing
             web_search_client: Optional web search client
         """
         self.db_service = db_service
+        self.elasticsearch_service = elasticsearch_service
         self.ollama_client = ollama_client
         self.query_classifier = query_classifier
         self.web_search_client = web_search_client
@@ -44,7 +48,9 @@ class QueryService:
                      web_search: Optional[bool] = None,
                      web_results_count: int = 5,
                      explain_classification: bool = False,
-                     enhance_query: bool = True) -> Dict[str, Any]:
+                     enhance_query: bool = True,
+                     use_elasticsearch: Optional[bool] = None,
+                     hybrid_search: bool = False) -> Dict[str, Any]:
         """
         Process a query and generate a response.
         
@@ -56,6 +62,8 @@ class QueryService:
             web_results_count: Number of web search results to include
             explain_classification: Whether to include classification explanation
             enhance_query: Whether to enhance the query for better retrieval (default: True)
+            use_elasticsearch: Whether to use Elasticsearch (None for auto based on availability)
+            hybrid_search: Whether to combine ChromaDB and Elasticsearch results for better retrieval
             
         Returns:
             Dictionary with query response and sources
@@ -96,12 +104,103 @@ class QueryService:
             # Log the embedding dimension for debugging
             self.logger.info(f"Generated query embedding with dimension: {len(query_embedding)}")
             
+            # Determine if we should use Elasticsearch
+            elasticsearch_available = self.elasticsearch_service is not None
+            should_use_elasticsearch = False
+            
+            if use_elasticsearch is not None:
+                # User explicitly specified whether to use Elasticsearch
+                should_use_elasticsearch = use_elasticsearch and elasticsearch_available
+            else:
+                # Auto-determine based on availability
+                should_use_elasticsearch = elasticsearch_available
+            
+            search_engine = "chromadb"
+            results = None
+            
             try:
-                # Get relevant documents/chunks from ChromaDB
                 # Using more results since we might combine chunks
                 retrieve_count = n_results * 3 if combine_chunks else n_results
                 
-                results = self.db_service.query_documents(query_embedding, n_results=retrieve_count)
+                if should_use_elasticsearch and hybrid_search:
+                    # Perform hybrid search with both engines
+                    self.logger.info(f"Performing hybrid search using both ChromaDB and Elasticsearch")
+                    search_engine = "hybrid"
+                    
+                    # Get results from both engines
+                    chroma_results = self.db_service.query_documents(query_embedding, n_results=retrieve_count)
+                    
+                    # Use Elasticsearch hybrid search (text + vector)
+                    es_results = self.elasticsearch_service.hybrid_search(
+                        query_text=search_query,
+                        query_embedding=query_embedding,
+                        n_results=retrieve_count,
+                        vector_weight=0.7  # Favor vector similarity over text matching
+                    )
+                    
+                    # Merge results (simple approach - could be improved)
+                    # Start with ChromaDB results
+                    results = chroma_results.copy()
+                    
+                    # Add unique Elasticsearch results
+                    es_ids = es_results["ids"]
+                    chroma_ids = results["ids"][0]
+                    
+                    for i, es_id in enumerate(es_ids):
+                        if es_id not in chroma_ids:
+                            # Add this result from Elasticsearch
+                            results["ids"][0].append(es_id)
+                            results["documents"][0].append(es_results["documents"][i])
+                            results["metadatas"][0].append(es_results["metadatas"][i])
+                            results["distances"][0].append(es_results["distances"][i])
+                    
+                    # Sort by distance
+                    sorted_items = sorted(zip(
+                        results["ids"][0], 
+                        results["documents"][0], 
+                        results["metadatas"][0], 
+                        results["distances"][0]
+                    ), key=lambda x: x[3])
+                    
+                    # Unzip and limit to original retrieve_count
+                    results["ids"][0] = [item[0] for item in sorted_items[:retrieve_count]]
+                    results["documents"][0] = [item[1] for item in sorted_items[:retrieve_count]]
+                    results["metadatas"][0] = [item[2] for item in sorted_items[:retrieve_count]]
+                    results["distances"][0] = [item[3] for item in sorted_items[:retrieve_count]]
+                    
+                elif should_use_elasticsearch:
+                    # Use only Elasticsearch
+                    self.logger.info(f"Using Elasticsearch for document retrieval")
+                    search_engine = "elasticsearch"
+                    
+                    # Decide between vector search, text search, or hybrid based on query
+                    if len(search_query.split()) <= 3:
+                        # Short queries work better with vector search
+                        results = self.elasticsearch_service.query_documents_by_vector(
+                            query_embedding=query_embedding,
+                            n_results=retrieve_count
+                        )
+                    else:
+                        # For longer queries, use hybrid search
+                        results = self.elasticsearch_service.hybrid_search(
+                            query_text=search_query,
+                            query_embedding=query_embedding,
+                            n_results=retrieve_count
+                        )
+                    
+                    # Format results to match ChromaDB structure for consistency
+                    results = {
+                        "ids": [results["ids"]],
+                        "documents": [results["documents"]],
+                        "metadatas": [results["metadatas"]],
+                        "distances": [results["distances"]]
+                    }
+                else:
+                    # Use ChromaDB (default)
+                    self.logger.info(f"Using ChromaDB for document retrieval")
+                    search_engine = "chromadb"
+                    results = self.db_service.query_documents(query_embedding, n_results=retrieve_count)
+                
             except Exception as e:
                 # Handle potential embedding dimension mismatch
                 error_msg = str(e)
@@ -206,7 +305,8 @@ class QueryService:
                 "sources": cleaned_results,
                 "status": "success",
                 "web_search_used": len(web_results) > 0,  # Only true if actual web results were found and used
-                "source_type": source_type
+                "source_type": source_type,
+                "search_engine": search_engine
             }
             
             # Add enhanced query information

@@ -12,6 +12,7 @@ class HealthResponse(BaseModel):
     """Health check response schema."""
     api: str = Field(description="Status of the API")
     chroma: str = Field(description="Status of the ChromaDB connection")
+    elasticsearch: Optional[str] = Field(None, description="Status of the Elasticsearch connection")
     ollama: str = Field(description="Status of the Ollama service")
     models: Dict[str, str] = Field(description="Status of the models")
     collection: Dict[str, Any] = Field(description="Status of the document collection")
@@ -77,3 +78,5 @@ class ChatRequest(BaseModel):
     web_search: Optional[bool] = Field(None, description="Whether to use web search (auto if None)")
     web_results_count: int = Field(3, description="Number of web search results to include")
     enhance_query: bool = Field(True, description="Whether to enhance the query for better retrieval")
+    use_elasticsearch: Optional[bool] = Field(None, description="Whether to use Elasticsearch (auto if None)")
+    hybrid_search: bool = Field(False, description="Whether to combine results from ChromaDB and Elasticsearch")

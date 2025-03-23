@@ -21,7 +21,9 @@ async def query_documents(
     web_search: bool = QueryParam(None, description="Whether to augment with web search results (auto if None)"),
     web_results_count: int = QueryParam(5, description="Number of web search results to include"),
     explain_classification: bool = QueryParam(False, description="Whether to include query classification explanation"),
-    enhance_query: bool = QueryParam(True, description="Whether to enhance the query for better retrieval")
+    enhance_query: bool = QueryParam(True, description="Whether to enhance the query for better retrieval"),
+    use_elasticsearch: bool = QueryParam(None, description="Whether to use Elasticsearch (auto if None)"),
+    hybrid_search: bool = QueryParam(False, description="Whether to combine results from ChromaDB and Elasticsearch")
 ):
     """Query for relevant documents based on input text."""
     query_service = get_query_service()
@@ -34,7 +36,9 @@ async def query_documents(
             web_search=web_search,
             web_results_count=web_results_count,
             explain_classification=explain_classification,
-            enhance_query=enhance_query
+            enhance_query=enhance_query,
+            use_elasticsearch=use_elasticsearch,
+            hybrid_search=hybrid_search
         )
         
         return result
@@ -103,7 +107,9 @@ async def chat_query(
             web_search=chat_request.web_search,
             web_results_count=chat_request.web_results_count,
             explain_classification=False,  # Always false for chat
-            enhance_query=chat_request.enhance_query
+            enhance_query=chat_request.enhance_query,
+            use_elasticsearch=chat_request.use_elasticsearch,
+            hybrid_search=chat_request.hybrid_search
         )
         
         # Check if we got a valid result

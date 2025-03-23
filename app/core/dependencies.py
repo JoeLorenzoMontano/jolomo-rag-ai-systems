@@ -11,9 +11,11 @@ import logging
 from core.config import (
     CHROMA_HOST, CHROMA_PORT, MAX_RETRIES, RETRY_DELAY,
     DOCS_FOLDER, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, CHUNK_OVERLAP, 
-    ENABLE_CHUNKING, SERPER_API_KEY
+    ENABLE_CHUNKING, SERPER_API_KEY, ELASTICSEARCH_URL, 
+    ELASTICSEARCH_ENABLED, ELASTICSEARCH_INDEX
 )
 from services.database_service import DatabaseService
+from services.elasticsearch_service import ElasticsearchService
 from services.job_service import JobService
 from services.content_processing_service import ContentProcessingService
 from services.query_service import QueryService
@@ -36,6 +38,25 @@ def _create_services() -> None:
         retry_delay=RETRY_DELAY
     )
     _services["db_service"] = db_service
+    
+    # Initialize Elasticsearch service if enabled
+    elasticsearch_service = None
+    if ELASTICSEARCH_ENABLED:
+        logger.info(f"Initializing Elasticsearch connection to {ELASTICSEARCH_URL}")
+        try:
+            elasticsearch_service = ElasticsearchService(
+                url=ELASTICSEARCH_URL,
+                index_name=ELASTICSEARCH_INDEX,
+                max_retries=MAX_RETRIES,
+                retry_delay=RETRY_DELAY
+            )
+            logger.info(f"Elasticsearch service initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Elasticsearch service: {e}")
+            logger.warning("Elasticsearch will be unavailable")
+    else:
+        logger.info("Elasticsearch is disabled in configuration")
+    _services["elasticsearch_service"] = elasticsearch_service
     
     # Initialize job tracking service
     job_service = JobService()
@@ -70,13 +91,15 @@ def _create_services() -> None:
         max_chunk_size=MAX_CHUNK_SIZE,
         min_chunk_size=MIN_CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
-        enable_chunking=ENABLE_CHUNKING
+        enable_chunking=ENABLE_CHUNKING,
+        elasticsearch_service=elasticsearch_service
     )
     _services["content_processing_service"] = content_processing_service
     
     # Initialize query service
     query_service = QueryService(
         db_service=db_service,
+        elasticsearch_service=elasticsearch_service,  # May be None if disabled
         ollama_client=ollama_client,
         query_classifier=query_classifier,
         web_search_client=web_search_client
@@ -137,6 +160,10 @@ def get_query_classifier() -> QueryClassifier:
 def get_web_search_client() -> WebSearchClient:
     """Get the web search client."""
     return get_service("web_search_client")
+
+def get_elasticsearch_service() -> ElasticsearchService:
+    """Get the Elasticsearch service."""
+    return get_service("elasticsearch_service")
 
 def get_all_services() -> Dict[str, Any]:
     """Get all initialized services."""
