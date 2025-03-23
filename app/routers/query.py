@@ -23,7 +23,8 @@ async def query_documents(
     explain_classification: bool = QueryParam(False, description="Whether to include query classification explanation"),
     enhance_query: bool = QueryParam(True, description="Whether to enhance the query for better retrieval"),
     use_elasticsearch: bool = QueryParam(None, description="Whether to use Elasticsearch (auto if None)"),
-    hybrid_search: bool = QueryParam(False, description="Whether to combine results from ChromaDB and Elasticsearch")
+    hybrid_search: bool = QueryParam(True, description="Whether to combine results from ChromaDB and Elasticsearch"),
+    apply_reranking: bool = QueryParam(True, description="Whether to apply reranking to improve document relevance")
 ):
     """Query for relevant documents based on input text."""
     query_service = get_query_service()
@@ -38,7 +39,8 @@ async def query_documents(
             explain_classification=explain_classification,
             enhance_query=enhance_query,
             use_elasticsearch=use_elasticsearch,
-            hybrid_search=hybrid_search
+            hybrid_search=hybrid_search,
+            apply_reranking=apply_reranking
         )
         
         return result
@@ -109,7 +111,8 @@ async def chat_query(
             explain_classification=False,  # Always false for chat
             enhance_query=chat_request.enhance_query,
             use_elasticsearch=chat_request.use_elasticsearch,
-            hybrid_search=chat_request.hybrid_search
+            hybrid_search=chat_request.hybrid_search,
+            apply_reranking=chat_request.apply_reranking  # Use reranking if enabled
         )
         
         # Check if we got a valid result

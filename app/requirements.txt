@@ -8,3 +8,6 @@ python-multipart>=0.0.6
 PyPDF2>=3.0.0
 pdfminer.six>=20221105  # Better PDF text extraction alternative
 elasticsearch>=8.10.0  # Elasticsearch client
+langchain>=0.0.267  # For document reranking
+sentence-transformers>=2.2.2  # For cross-encoder reranking
+rank-bm25>=0.2.2  # For BM25 fallback reranking

@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Tuple, Optional, Union
 from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
 from utils.web_search import WebSearchClient
+from utils.reranker import Reranker
 from services.database_service import DatabaseService
 from services.elasticsearch_service import ElasticsearchService
 
@@ -38,6 +39,9 @@ class QueryService:
         self.query_classifier = query_classifier
         self.web_search_client = web_search_client
         
+        # Initialize reranker
+        self.reranker = Reranker()
+        
         # Setup logging
         self.logger = logging.getLogger(__name__)
     
@@ -50,7 +54,8 @@ class QueryService:
                      explain_classification: bool = False,
                      enhance_query: bool = True,
                      use_elasticsearch: Optional[bool] = None,
-                     hybrid_search: bool = False) -> Dict[str, Any]:
+                     hybrid_search: bool = True,
+                     apply_reranking: bool = True) -> Dict[str, Any]:
         """
         Process a query and generate a response.
         
@@ -288,6 +293,51 @@ class QueryService:
             if combine_chunks:
                 docs, ids, metadatas, distances = self._combine_chunks(docs, ids, metadatas, distances, n_results)
             
+            # Apply reranking if enabled
+            reranked = False
+            if apply_reranking and len(docs) > 1:
+                try:
+                    self.logger.info(f"Applying reranking to {len(docs)} documents")
+                    reranked_docs, reranked_ids, reranked_metadatas, reranked_distances = self.reranker.rerank(
+                        query=query, 
+                        documents=docs, 
+                        ids=ids, 
+                        metadatas=metadatas,
+                        distances=distances
+                    )
+                    
+                    # Only update if reranking was successful
+                    if reranked_docs and len(reranked_docs) == len(docs):
+                        docs = reranked_docs
+                        ids = reranked_ids
+                        metadatas = reranked_metadatas
+                        distances = reranked_distances
+                        reranked = True
+                        self.logger.info("Successfully reranked documents")
+                except Exception as e:
+                    self.logger.warning(f"Primary reranking failed: {e}, trying fallback reranker")
+                    
+                    # Try fallback BM25 reranking
+                    try:
+                        reranked_docs, reranked_ids, reranked_metadatas, reranked_distances = self.reranker.rerank_fallback(
+                            query=query, 
+                            documents=docs, 
+                            ids=ids, 
+                            metadatas=metadatas,
+                            distances=distances
+                        )
+                        
+                        # Only update if fallback reranking was successful
+                        if reranked_docs and len(reranked_docs) == len(docs):
+                            docs = reranked_docs
+                            ids = reranked_ids
+                            metadatas = reranked_metadatas
+                            distances = reranked_distances
+                            reranked = True
+                            self.logger.info("Successfully reranked documents using fallback BM25")
+                    except Exception as fallback_error:
+                        self.logger.warning(f"Fallback reranking also failed, using original order: {fallback_error}")
+            
             # Get the best matching document (first result)
             best_match = docs[0] if docs else ""
             
@@ -347,6 +397,7 @@ class QueryService:
                 "metadatas": metadatas,
                 "distances": distances,
                 "combined_chunks": combine_chunks,
+                "reranked": reranked,
                 "web_results": web_results if web_results else []
             }
             
@@ -358,7 +409,8 @@ class QueryService:
                 "status": "success",
                 "web_search_used": len(web_results) > 0,  # Only true if actual web results were found and used
                 "source_type": source_type,
-                "search_engine": search_engine
+                "search_engine": search_engine,
+                "reranking_applied": reranked
             }
             
             # Add enhanced query information

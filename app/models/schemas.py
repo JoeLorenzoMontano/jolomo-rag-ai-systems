@@ -79,4 +79,5 @@ class ChatRequest(BaseModel):
     web_results_count: int = Field(3, description="Number of web search results to include")
     enhance_query: bool = Field(True, description="Whether to enhance the query for better retrieval")
     use_elasticsearch: Optional[bool] = Field(None, description="Whether to use Elasticsearch (auto if None)")
-    hybrid_search: bool = Field(False, description="Whether to combine results from ChromaDB and Elasticsearch")
+    hybrid_search: bool = Field(True, description="Whether to combine results from ChromaDB and Elasticsearch")
+    apply_reranking: bool = Field(True, description="Whether to apply reranking to improve document relevance")
