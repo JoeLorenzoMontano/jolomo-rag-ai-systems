@@ -8,6 +8,8 @@ import re
 import os
 from typing import List, Dict, Any, Optional
 
+from models.schemas import ChunkInfo
+
 def clean_filename(filename: str) -> str:
     """
     Clean a filename to prevent path traversal and ensure it's safe.
@@ -47,21 +49,21 @@ def extract_file_info(chunk_id: str) -> Dict[str, str]:
             "chunk_num": "0"
         }
 
-def filter_chunks_by_filename(chunks: List[Dict[str, Any]], 
+def filter_chunks_by_filename(chunks: List[ChunkInfo], 
                              filename: Optional[str] = None, 
                              content: Optional[str] = None,
-                             case_sensitive: bool = False) -> List[Dict[str, Any]]:
+                             case_sensitive: bool = False) -> List[ChunkInfo]:
     """
-    Filter chunks by filename or content.
+    Filter ChunkInfo objects by filename or content.
     
     Args:
-        chunks: List of chunks to filter
+        chunks: List of ChunkInfo objects to filter
         filename: Optional filename filter (partial match)
         content: Optional content filter (partial match)
         case_sensitive: Whether to use case-sensitive matching
         
     Returns:
-        Filtered list of chunks
+        Filtered list of ChunkInfo objects
     """
     if not filename and not content:
         return chunks
@@ -70,7 +72,7 @@ def filter_chunks_by_filename(chunks: List[Dict[str, Any]],
     
     for chunk in chunks:
         # Get the filename to check
-        chunk_filename = chunk.get("filename", "")
+        chunk_filename = chunk.filename
         
         # Check filename filter if provided
         if filename:
@@ -83,7 +85,7 @@ def filter_chunks_by_filename(chunks: List[Dict[str, Any]],
         
         # Check content filter if provided
         if content:
-            chunk_text = chunk.get("text", "")
+            chunk_text = chunk.text
             if case_sensitive:
                 if content not in chunk_text:
                     continue
