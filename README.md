@@ -78,7 +78,29 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 - **API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 - **ChromaDB**: http://localhost:8001 (direct database access)
+- **Elasticsearch**: http://localhost:9200 (text search engine)
 - **Ollama**: http://localhost:11434 (LLM server)
+
+## System Architecture
+
+This system uses a dual-database approach to provide powerful, flexible document retrieval:
+
+### Databases
+- **ChromaDB**: Vector database that stores document embeddings for semantic similarity search
+- **Elasticsearch**: Full-text search engine with BM25 algorithm for keyword and text-based search
+
+### Search Methods
+- **Vector Search**: Uses embeddings to find semantically similar content (better for conceptual queries)
+- **Text Search**: Uses BM25 text matching for exact text matches and keyword search (better for specific terms)
+- **Hybrid Search**: Combines both approaches with configurable weights to get the best of both worlds
+- **Document Reranking**: Further improves result relevance using cross-encoder models
+
+### Query Processing
+1. **Preprocessing**: Enhances queries with context and synonyms
+2. **Classification**: Determines optimal search approach based on query characteristics
+3. **Retrieval**: Fetches relevant documents using the appropriate search methods
+4. **Reranking**: Reorders retrieved documents based on relevance to the query
+5. **Response Generation**: Uses LLM to create a natural language response based on retrieved context
 
 ## Ollama Setup Options
 
