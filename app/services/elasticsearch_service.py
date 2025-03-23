@@ -198,18 +198,52 @@ class ElasticsearchService:
         Returns:
             Dictionary with query results
         """
+        # Preprocess the query to extract important keywords and terms
+        enhanced_query = self._preprocess_query(query_text)
+        self.logger.info(f"Preprocessed query for Elasticsearch: '{enhanced_query}'")
+        
+        # Use multi_match query with cross_fields to better match across text fields
         query = {
             "query": {
-                "match": {
-                    "text": {
-                        "query": query_text,
-                        "operator": "and"
-                    }
+                "bool": {
+                    "should": [
+                        # Standard match query with boosted exact phrases
+                        {
+                            "match_phrase": {
+                                "text": {
+                                    "query": query_text,
+                                    "boost": 2.0,
+                                    "slop": 2  # Allow some flexibility in phrase matching
+                                }
+                            }
+                        },
+                        # Match query with OR operator to catch more results
+                        {
+                            "match": {
+                                "text": {
+                                    "query": enhanced_query,
+                                    "operator": "or",
+                                    "minimum_should_match": "50%"  # At least half of the terms should match
+                                }
+                            }
+                        },
+                        # More like this query to find similar documents
+                        {
+                            "more_like_this": {
+                                "fields": ["text"],
+                                "like": query_text,
+                                "min_term_freq": 1,
+                                "max_query_terms": 12,
+                                "min_doc_freq": 1
+                            }
+                        }
+                    ]
                 }
             },
             "size": n_results
         }
         
+        # Execute the search
         response = self.client.search(index=self.index_name, body=query)
         
         # Format response similar to ChromaDB
@@ -232,6 +266,71 @@ class ElasticsearchService:
             results["distances"].append(distance)
             
         return results
+        
+    def _preprocess_query(self, query_text: str) -> str:
+        """
+        Preprocess a query for better Elasticsearch matching.
+        
+        Args:
+            query_text: Original query text
+            
+        Returns:
+            Preprocessed query optimized for Elasticsearch
+        """
+        import re
+        from collections import Counter
+        
+        # Convert to lowercase
+        text = query_text.lower()
+        
+        # Remove punctuation except for important ones like - and _
+        text = re.sub(r'[^\w\s\-_]', ' ', text)
+        
+        # Split into words
+        words = text.split()
+        
+        # Remove common stop words that aren't helpful for search
+        stop_words = {'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 
+                     'being', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about',
+                     'like', 'through', 'over', 'before', 'after', 'between', 'under',
+                     'during', 'and', 'but', 'or', 'so', 'than', 'that', 'this', 'these',
+                     'those', 'if', 'when', 'which', 'who', 'whom', 'whose', 'what', 
+                     'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more',
+                     'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own',
+                     'same', 'too', 'very', 'can', 'will', 'just', 'should', 'now'}
+        
+        filtered_words = [word for word in words if word not in stop_words and len(word) > 1]
+        
+        # If we removed too many words, use the original filtered words
+        if len(filtered_words) < 2 and len(words) > 2:
+            filtered_words = words
+        
+        # Extract potential important terms (longer words are often more specific)
+        important_terms = [word for word in filtered_words if len(word) > 4]
+        
+        # Add any technical terms or terms with special characters
+        technical_terms = [word for word in filtered_words if '-' in word or '_' in word or 
+                        (any(c.isdigit() for c in word) and any(c.isalpha() for c in word))]
+        
+        # Combine regular words with important terms
+        enhanced_words = filtered_words + important_terms + technical_terms
+        
+        # Count word frequency (more frequent terms might be more important)
+        word_counts = Counter(enhanced_words)
+        
+        # Sort words by importance (frequency and length)
+        sorted_words = sorted(word_counts.keys(), 
+                            key=lambda w: (word_counts[w], len(w)), 
+                            reverse=True)
+        
+        # Create the enhanced query
+        enhanced_query = ' '.join(sorted_words)
+        
+        # Keep the original query structure if the preprocessing removed too much
+        if len(enhanced_query) < len(query_text) / 3:
+            return query_text
+            
+        return enhanced_query
     
     def hybrid_search(self, query_text: str, query_embedding: List[float], 
                     n_results: int = 3, vector_weight: float = 0.7) -> Dict[str, Any]:
@@ -247,19 +346,52 @@ class ElasticsearchService:
         Returns:
             Dictionary with hybrid query results
         """
-        # Perform hybrid search using Elasticsearch's rank_features
+        # Preprocess the text query for better text matching
+        enhanced_query = self._preprocess_query(query_text)
+        
+        # Create a more sophisticated hybrid search query that uses both enhanced matching
+        # and vector similarity
         query = {
             "query": {
                 "function_score": {
                     "query": {
-                        "match": {
-                            "text": {
-                                "query": query_text,
-                                "operator": "and"
-                            }
+                        "bool": {
+                            "should": [
+                                # Exact phrase matching with higher boost
+                                {
+                                    "match_phrase": {
+                                        "text": {
+                                            "query": query_text,
+                                            "boost": 2.0,
+                                            "slop": 2
+                                        }
+                                    }
+                                },
+                                # Enhanced keyword matching
+                                {
+                                    "match": {
+                                        "text": {
+                                            "query": enhanced_query,
+                                            "operator": "or",
+                                            "minimum_should_match": "50%"
+                                        }
+                                    }
+                                },
+                                # Fuzzy matching for typo tolerance
+                                {
+                                    "match": {
+                                        "text": {
+                                            "query": query_text,
+                                            "fuzziness": "AUTO",
+                                            "boost": 0.5
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "functions": [
+                        # Vector similarity scoring with embedding
                         {
                             "script_score": {
                                 "script": {
@@ -271,6 +403,7 @@ class ElasticsearchService:
                             },
                             "weight": vector_weight
                         },
+                        # Text relevance score weight
                         {
                             "weight": 1.0 - vector_weight
                         }
@@ -279,7 +412,8 @@ class ElasticsearchService:
                     "boost_mode": "multiply"
                 }
             },
-            "size": n_results
+            "size": n_results * 2,  # Get more results initially for better filtering
+            "_source": ["text", "metadata"]
         }
         
         response = self.client.search(index=self.index_name, body=query)
@@ -296,12 +430,20 @@ class ElasticsearchService:
             results["ids"].append(hit["_id"])
             results["documents"].append(hit["_source"]["text"])
             results["metadatas"].append(hit["_source"]["metadata"])
-            # For hybrid search, convert score to a distance-like metric
+            
+            # For hybrid search, convert score to a distance-like metric (lower is better)
             if response["hits"]["max_score"] > 0:
                 distance = 1.0 - (hit["_score"] / response["hits"]["max_score"])
             else:
                 distance = 1.0
             results["distances"].append(distance)
+        
+        # Limit to requested number of results
+        if len(results["ids"]) > n_results:
+            results["ids"] = results["ids"][:n_results]
+            results["documents"] = results["documents"][:n_results]
+            results["metadatas"] = results["metadatas"][:n_results]
+            results["distances"] = results["distances"][:n_results]
             
         return results
     

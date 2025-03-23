@@ -329,6 +329,15 @@
                                                 <strong>${metadata.filename || sourceId}</strong>
                                                 ${distance !== null ? ` <span class="ms-2 badge bg-secondary">Similarity: ${(1 - distance).toFixed(3)}</span>` : ''}
                                                 <span class="ms-2 badge bg-info">Local Document</span>
+                                                ${metadata.search_source ? 
+                                                    `<span class="ms-2 badge ${
+                                                        metadata.search_source === 'vector' ? 'bg-primary' : 
+                                                        metadata.search_source === 'text' ? 'bg-danger' : 'bg-success'
+                                                    }">${
+                                                        metadata.search_source === 'vector' ? 'Vector' : 
+                                                        metadata.search_source === 'text' ? 'Text' : 'Hybrid'
+                                                    }</span>` 
+                                                : ''}
                                             </button>
                                         </h2>
                                         <div id="collapse${index}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" aria-labelledby="heading${index}" data-bs-parent="#sourcesAccordion">

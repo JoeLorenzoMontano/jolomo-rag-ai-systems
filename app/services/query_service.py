@@ -138,35 +138,87 @@ class QueryService:
                         vector_weight=0.7  # Favor vector similarity over text matching
                     )
                     
-                    # Merge results (simple approach - could be improved)
-                    # Start with ChromaDB results
-                    results = chroma_results.copy()
+                    # Improved hybrid merging algorithm
+                    # Start with both result sets
+                    self.logger.info(f"Merging results from ChromaDB ({len(chroma_results['ids'][0])} results) and Elasticsearch ({len(es_results['ids'])} results)")
                     
-                    # Add unique Elasticsearch results
-                    es_ids = es_results["ids"]
-                    chroma_ids = results["ids"][0]
+                    # Initialize unified results
+                    all_ids = []
+                    all_docs = []
+                    all_metadatas = []
+                    all_scores = []  # We'll use scores instead of distances for merging (higher is better)
                     
-                    for i, es_id in enumerate(es_ids):
-                        if es_id not in chroma_ids:
-                            # Add this result from Elasticsearch
-                            results["ids"][0].append(es_id)
-                            results["documents"][0].append(es_results["documents"][i])
-                            results["metadatas"][0].append(es_results["metadatas"][i])
-                            results["distances"][0].append(es_results["distances"][i])
+                    # Process ChromaDB results
+                    for i, chroma_id in enumerate(chroma_results['ids'][0]):
+                        # Convert distance to score (1.0 - distance)
+                        chroma_score = 1.0 - chroma_results['distances'][0][i]
+                        all_ids.append(chroma_id)
+                        all_docs.append(chroma_results['documents'][0][i])
+                        all_metadatas.append(chroma_results['metadatas'][0][i])
+                        # Add source information to metadata
+                        all_metadatas[-1]['search_source'] = 'vector'
+                        # Store score with a multiplier for ChromaDB results
+                        all_scores.append((chroma_score * 0.7, i, 'vector'))  # (score, original_index, source)
                     
-                    # Sort by distance
-                    sorted_items = sorted(zip(
-                        results["ids"][0], 
-                        results["documents"][0], 
-                        results["metadatas"][0], 
-                        results["distances"][0]
-                    ), key=lambda x: x[3])
+                    # Process Elasticsearch results
+                    for i, es_id in enumerate(es_results['ids']):
+                        # Check if this document is already in results from ChromaDB
+                        if es_id in all_ids:
+                            # If already included, update the score by adding the ES score
+                            idx = all_ids.index(es_id)
+                            es_score = 1.0 - es_results['distances'][i]
+                            # Update score tuple with combined sources
+                            current_score, original_idx, source = all_scores[idx]
+                            # Add the Elasticsearch score with its weight
+                            all_scores[idx] = (current_score + (es_score * 0.3), original_idx, 'hybrid')
+                            # Update metadata to indicate it was found by both
+                            all_metadatas[idx]['search_source'] = 'hybrid'
+                        else:
+                            # Not in results yet, add it
+                            es_score = 1.0 - es_results['distances'][i]
+                            all_ids.append(es_id)
+                            all_docs.append(es_results['documents'][i])
+                            all_metadatas.append(es_results['metadatas'][i])
+                            # Add source information
+                            all_metadatas[-1]['search_source'] = 'text'
+                            # Store score with original index and source
+                            all_scores.append((es_score * 0.3, i + len(chroma_results['ids'][0]), 'text'))
                     
-                    # Unzip and limit to original retrieve_count
-                    results["ids"][0] = [item[0] for item in sorted_items[:retrieve_count]]
-                    results["documents"][0] = [item[1] for item in sorted_items[:retrieve_count]]
-                    results["metadatas"][0] = [item[2] for item in sorted_items[:retrieve_count]]
-                    results["distances"][0] = [item[3] for item in sorted_items[:retrieve_count]]
+                    # Sort by score (descending)
+                    combined_results = list(zip(all_ids, all_docs, all_metadatas, all_scores))
+                    sorted_results = sorted(combined_results, key=lambda x: x[3][0], reverse=True)
+                    
+                    # Log the combined results count
+                    self.logger.info(f"Combined results: {len(sorted_results)} items after merging")
+                    
+                    # Limit to requested number and unpack
+                    top_results = sorted_results[:retrieve_count]
+                    ids, docs, metadatas, score_tuples = zip(*top_results) if top_results else ([], [], [], [])
+                    
+                    # Convert scores back to distances (lower is better)
+                    distances = [1.0 - score_tuple[0] for score_tuple in score_tuples]
+                    
+                    # Format results to match ChromaDB structure
+                    results = {
+                        "ids": [list(ids)],
+                        "documents": [list(docs)],
+                        "metadatas": [list(metadatas)],
+                        "distances": [list(distances)]
+                    }
+                    
+                    # Log sources in final results
+                    sources = [score[2] for score in score_tuples]
+                    source_counts = {
+                        'vector': sources.count('vector'),
+                        'text': sources.count('text'),
+                        'hybrid': sources.count('hybrid')
+                    }
+                    self.logger.info(f"Final hybrid results sources: {source_counts}")
+                    
+                    # Add metadata about the hybrid search sources
+                    for i, metadata in enumerate(results["metadatas"][0]):
+                        source = score_tuples[i][2]
+                        metadata['search_source'] = source
                     
                 elif should_use_elasticsearch:
                     # Use only Elasticsearch
