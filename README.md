@@ -21,7 +21,13 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 - **Web Search Integration**: Augments with internet search for comprehensive answers
 - **Elasticsearch Integration**: Provides powerful text search alongside vector embeddings
 - **Hybrid Search**: Combines vector similarity and text relevance for improved results
-- **Document Reranking**: Use langchain by default but fallback to BM25 if not available
+- **Document Reranking**: Uses cross-encoder models via LangChain with BM25 fallback
+
+**Implemented RAG Techniques**:
+- **Hybrid Retrieval**: Combines dense vector search and sparse BM25 text matching for optimal results
+- **Cross-Encoder Reranking**: Uses transformer-based models to reorder retrieved documents by relevance
+- **Query Preprocessing**: Enhances queries by expanding technical terms and acronyms
+- **Adaptive Search**: Automatically selects the optimal search approach based on query characteristics
 
 ## Setup and Usage
 
@@ -113,4 +119,4 @@ The following advanced RAG capabilities are planned for future development:
 ### Advanced RAG Techniques
 - **Synthetic Data Augmentation**: Generate additional context-rich documents using AI to improve retrieval quality
 - **Multi-vector Retrieval**: Store multiple embeddings per chunk (summary, entities, relationships) for improved semantic search
-- **Retrieval Optimization**: Implement re-ranking, contextual compression, and query-specific retrieval strategies
+- **Query Optimization**: Implement query expansion and transformation for better retrieval
