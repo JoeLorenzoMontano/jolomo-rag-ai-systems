@@ -164,7 +164,28 @@ class QueryService:
                         reranked = True
                         self.logger.info("Successfully reranked documents")
                 except Exception as e:
-                    self.logger.warning(f"Reranking failed, using original order: {e}")
+                    self.logger.warning(f"Primary reranking failed: {e}, trying fallback reranker")
+                    
+                    # Try fallback BM25 reranking
+                    try:
+                        reranked_docs, reranked_ids, reranked_metadatas, reranked_distances = self.reranker.rerank_fallback(
+                            query=query, 
+                            documents=docs, 
+                            ids=ids, 
+                            metadatas=metadatas,
+                            distances=distances
+                        )
+                        
+                        # Only update if fallback reranking was successful
+                        if reranked_docs and len(reranked_docs) == len(docs):
+                            docs = reranked_docs
+                            ids = reranked_ids
+                            metadatas = reranked_metadatas
+                            distances = reranked_distances
+                            reranked = True
+                            self.logger.info("Successfully reranked documents using fallback BM25")
+                    except Exception as fallback_error:
+                        self.logger.warning(f"Fallback reranking also failed, using original order: {fallback_error}")
             
             # Get the best matching document (first result)
             best_match = docs[0] if docs else ""
