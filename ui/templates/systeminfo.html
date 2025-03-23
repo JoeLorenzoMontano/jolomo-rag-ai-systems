@@ -66,7 +66,7 @@
         </div>
         
         <div class="row mb-4">
-            <div class="col-md-6">
+            <div class="col-12">
                 <div class="card mb-4">
                     <div class="card-header bg-success text-white">
                         <i class="bi bi-tags"></i> Classification Terms
@@ -240,13 +240,13 @@
                             <div class="mb-3">
                                 <h5 class="mb-2">Domain Terms <span class="badge bg-primary">${data.term_count}</span></h5>
                                 <p class="small text-muted">These terms are used by the query classifier to determine whether to use documents or web search.</p>
-                                <div class="term-cloud">
+                                <div class="term-cloud d-flex flex-wrap justify-content-center">
                     `;
                     
                     // Create a tag cloud with the terms
                     if (data.terms && data.terms.length > 0) {
                         data.terms.forEach(term => {
-                            html += `<span class="badge bg-light text-dark m-1">${term}</span>`;
+                            html += `<span class="badge bg-light text-dark m-1 p-2 fs-6">${term}</span>`;
                         });
                     } else {
                         html += `<p>No terms available</p>`;

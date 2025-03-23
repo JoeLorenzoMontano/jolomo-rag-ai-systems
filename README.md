@@ -115,6 +115,9 @@ The following advanced RAG capabilities are planned for future development:
 ### Scalability & Performance Enhancements
 - **Kafka Integration**: Implement Apache Kafka for asynchronous document processing and uploading pipelines
 - **Distributed LLM Serving**: Replace Ollama with vLLM for distributed inference and optimized throughput
+- **Multi-Level Caching**: Implement Redis-based caching for search results, embeddings, and API responses
+- **Query Result Caching**: Store and reuse results for frequently asked questions to reduce latency
+- **Vector Database Optimization**: Implement sharding and partitioning for improved ChromaDB/Elasticsearch performance
 
 ### Advanced RAG Techniques
 - **Synthetic Data Augmentation**: Generate additional context-rich documents using AI to improve retrieval quality
