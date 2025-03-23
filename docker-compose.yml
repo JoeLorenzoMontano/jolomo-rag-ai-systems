@@ -70,7 +70,7 @@ services:
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - xpack.security.enabled=false
     volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
+      - ./pre-populated-db/elasticsearch:/usr/share/elasticsearch/data  # Use local pre-populated data
     ports:
       - "9200:9200"
       - "9300:9300"
