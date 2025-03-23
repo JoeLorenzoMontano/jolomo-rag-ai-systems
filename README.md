@@ -19,6 +19,7 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 - **Query Classification**: Intelligently routes between document and web search
 - **Conversation Memory**: Maintains context for natural follow-up questions
 - **Web Search Integration**: Augments with internet search for comprehensive answers
+- **Document Reranking**: Use langchain by default but fallback to BM25 if not available
 
 ## Setup and Usage
 
