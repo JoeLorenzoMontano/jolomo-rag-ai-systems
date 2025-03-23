@@ -20,6 +20,20 @@ A complete RAG (Retrieval-Augmented Generation) system that processes documents,
 - **Conversation Memory**: Maintains context for natural follow-up questions
 - **Web Search Integration**: Augments with internet search for comprehensive answers
 
+## Future Plans
+
+The following advanced RAG capabilities are planned for future development:
+
+### Scalability & Performance Enhancements
+- **Kafka Integration**: Implement Apache Kafka for asynchronous document processing and uploading pipelines
+- **Distributed LLM Serving**: Replace Ollama with vLLM for distributed inference and optimized throughput
+- **ElasticSearch Integration**: Add Elasticsearch as a complementary retrieval system alongside ChromaDB for hybrid search
+
+### Advanced RAG Techniques
+- **Synthetic Data Augmentation**: Generate additional context-rich documents using AI to improve retrieval quality
+- **Multi-vector Retrieval**: Store multiple embeddings per chunk (summary, entities, relationships) for improved semantic search
+- **Retrieval Optimization**: Implement re-ranking, contextual compression, and query-specific retrieval strategies
+
 ## Setup and Usage
 
 ### Prerequisites and Requirements
