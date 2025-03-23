@@ -77,3 +77,4 @@ class ChatRequest(BaseModel):
     web_search: Optional[bool] = Field(None, description="Whether to use web search (auto if None)")
     web_results_count: int = Field(3, description="Number of web search results to include")
     enhance_query: bool = Field(True, description="Whether to enhance the query for better retrieval")
+    apply_reranking: bool = Field(True, description="Whether to apply reranking to improve document relevance")

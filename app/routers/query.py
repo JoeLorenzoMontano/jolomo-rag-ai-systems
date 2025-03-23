@@ -21,7 +21,8 @@ async def query_documents(
     web_search: bool = QueryParam(None, description="Whether to augment with web search results (auto if None)"),
     web_results_count: int = QueryParam(5, description="Number of web search results to include"),
     explain_classification: bool = QueryParam(False, description="Whether to include query classification explanation"),
-    enhance_query: bool = QueryParam(True, description="Whether to enhance the query for better retrieval")
+    enhance_query: bool = QueryParam(True, description="Whether to enhance the query for better retrieval"),
+    apply_reranking: bool = QueryParam(True, description="Whether to apply reranking to improve document relevance")
 ):
     """Query for relevant documents based on input text."""
     query_service = get_query_service()
@@ -34,7 +35,8 @@ async def query_documents(
             web_search=web_search,
             web_results_count=web_results_count,
             explain_classification=explain_classification,
-            enhance_query=enhance_query
+            enhance_query=enhance_query,
+            apply_reranking=apply_reranking
         )
         
         return result
@@ -103,7 +105,8 @@ async def chat_query(
             web_search=chat_request.web_search,
             web_results_count=chat_request.web_results_count,
             explain_classification=False,  # Always false for chat
-            enhance_query=chat_request.enhance_query
+            enhance_query=chat_request.enhance_query,
+            apply_reranking=chat_request.apply_reranking  # Use reranking if enabled
         )
         
         # Check if we got a valid result
