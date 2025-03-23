@@ -10,7 +10,8 @@ from typing import Dict, Any
 from core.dependencies import (
     get_db_service, 
     get_ollama_client,
-    get_query_classifier
+    get_query_classifier,
+    get_elasticsearch_service
 )
 
 router = APIRouter(tags=["health"])
@@ -21,10 +22,12 @@ async def health_check():
     db_service = get_db_service()
     ollama_client = get_ollama_client()
     query_classifier = get_query_classifier()
+    elasticsearch_service = get_elasticsearch_service()
     
     health_status = {
         "api": "healthy",
         "chroma": "unknown",
+        "elasticsearch": "disabled",
         "ollama": "unknown",
         "models": {
             "response_model": "unknown",
@@ -50,6 +53,23 @@ async def health_check():
             health_status["collection"]["status"] = f"error: {str(e)}"
     except Exception as e:
         health_status["chroma"] = f"unhealthy: {str(e)}"
+        
+    # Check Elasticsearch if available
+    if elasticsearch_service:
+        try:
+            is_healthy, status = elasticsearch_service.is_healthy()
+            health_status["elasticsearch"] = "healthy" if is_healthy else status
+            
+            # Add Elasticsearch document count
+            try:
+                es_doc_count = elasticsearch_service.get_document_count()
+                health_status["collection"]["es_document_count"] = es_doc_count
+            except Exception as e:
+                health_status["collection"]["es_status"] = f"error: {str(e)}"
+        except Exception as e:
+            health_status["elasticsearch"] = f"unhealthy: {str(e)}"
+    else:
+        health_status["elasticsearch"] = "disabled"
     
     # Check Ollama
     try:

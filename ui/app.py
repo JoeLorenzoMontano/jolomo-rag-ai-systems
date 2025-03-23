@@ -116,6 +116,8 @@ def query_documents():
     web_results_count = data.get('web_results_count', 5)
     explain_classification = data.get('explain_classification', False)
     enhance_query = data.get('enhance_query', True)
+    use_elasticsearch = data.get('use_elasticsearch', None)  # None means auto-determine
+    hybrid_search = data.get('hybrid_search', False)
     apply_reranking = data.get('apply_reranking', True)  # Default to True
     
     if not query_text:
@@ -133,6 +135,8 @@ def query_documents():
                 'web_results_count': web_results_count,
                 'explain_classification': explain_classification,
                 'enhance_query': enhance_query,
+                'use_elasticsearch': use_elasticsearch,
+                'hybrid_search': hybrid_search,
                 'apply_reranking': apply_reranking
             },
             timeout=None
@@ -154,6 +158,8 @@ def chat_query():
     web_search = data.get('web_search', None)  # None means auto-classify
     web_results_count = data.get('web_results_count', 3)
     enhance_query = data.get('enhance_query', True)
+    use_elasticsearch = data.get('use_elasticsearch', None)  # None means auto-determine
+    hybrid_search = data.get('hybrid_search', False)
     apply_reranking = data.get('apply_reranking', True)
     
     # Ensure we have at least one user message
@@ -180,6 +186,8 @@ def chat_query():
                 'web_search': web_search,
                 'web_results_count': web_results_count,
                 'enhance_query': enhance_query,
+                'use_elasticsearch': use_elasticsearch,
+                'hybrid_search': hybrid_search,
                 'apply_reranking': apply_reranking
             },
             timeout=None

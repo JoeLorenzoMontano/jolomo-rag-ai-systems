@@ -15,8 +15,10 @@ from utils.ollama_client import OllamaClient
 from utils.pdf_extractor import PDFExtractor
 from utils.query_classifier import QueryClassifier
 from services.database_service import DatabaseService
+from services.elasticsearch_service import ElasticsearchService
 from services.job_service import JobService, JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED
 from core.utils import clean_filename
+from core.config import ELASTICSEARCH_ENABLED
 
 class ContentProcessingService:
     """Service for processing and managing document content."""
@@ -30,7 +32,8 @@ class ContentProcessingService:
                 max_chunk_size: int = 1000,
                 min_chunk_size: int = 200,
                 chunk_overlap: int = 100,
-                enable_chunking: bool = True):
+                enable_chunking: bool = True,
+                elasticsearch_service: ElasticsearchService = None):
         """
         Initialize the content processing service.
         
@@ -44,12 +47,15 @@ class ContentProcessingService:
             min_chunk_size: Minimum chunk size
             chunk_overlap: Overlap between chunks
             enable_chunking: Whether to enable chunking
+            elasticsearch_service: Optional Elasticsearch service
         """
         self.db_service = db_service
         self.job_service = job_service
         self.ollama_client = ollama_client
         self.query_classifier = query_classifier
         self.docs_folder = docs_folder
+        self.elasticsearch_service = elasticsearch_service
+        self.elasticsearch_enabled = ELASTICSEARCH_ENABLED and elasticsearch_service is not None
         
         # Initialize text chunker with default settings
         self.text_chunker = TextChunker(
@@ -379,6 +385,20 @@ class ContentProcessingService:
                     metadatas=[metadata]
                 )
                 
+                # Add to Elasticsearch if enabled
+                if self.elasticsearch_enabled and self.elasticsearch_service:
+                    try:
+                        self.elasticsearch_service.add_documents(
+                            documents=[processing_text],
+                            embeddings=[embedding],
+                            ids=[chunk_id],
+                            metadatas=[metadata]
+                        )
+                        self.logger.info(f"Job {job_id}: Added chunk {chunk_id} to Elasticsearch")
+                    except Exception as es_error:
+                        self.logger.error(f"Job {job_id}: Error adding to Elasticsearch: {es_error}")
+                        # Continue with ChromaDB only
+                
                 successful += 1
                 
             except Exception as e:
@@ -527,6 +547,20 @@ class ContentProcessingService:
                         ids=[all_chunk_ids[i]],
                         metadatas=[metadata]
                     )
+                    
+                    # Add to Elasticsearch if enabled
+                    if self.elasticsearch_enabled and self.elasticsearch_service:
+                        try:
+                            self.elasticsearch_service.add_documents(
+                                documents=[processing_text],
+                                embeddings=[embedding],
+                                ids=[all_chunk_ids[i]],
+                                metadatas=[metadata]
+                            )
+                            self.logger.info(f"Job {job_id}: Added chunk {all_chunk_ids[i]} to Elasticsearch")
+                        except Exception as es_error:
+                            self.logger.error(f"Job {job_id}: Error adding to Elasticsearch: {es_error}")
+                            # Continue with ChromaDB only
                     
                     successful += 1
                     progress = 50 + int((i + 1) / len(all_chunks) * 40)  # Progress from 50% to 90%

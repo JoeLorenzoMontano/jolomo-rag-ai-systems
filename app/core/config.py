@@ -18,6 +18,11 @@ logging.basicConfig(
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 
+# Elasticsearch connection settings
+ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
+ELASTICSEARCH_ENABLED = os.getenv("ELASTICSEARCH_ENABLED", "true").lower() == "true"
+ELASTICSEARCH_INDEX = os.getenv("ELASTICSEARCH_INDEX", "rag-documents")
+
 # Chunking configuration from environment variables with defaults
 MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "1000"))
 MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "200"))
@@ -44,6 +49,9 @@ def get_settings() -> Dict[str, Any]:
     return {
         "chroma_host": CHROMA_HOST,
         "chroma_port": CHROMA_PORT,
+        "elasticsearch_url": ELASTICSEARCH_URL,
+        "elasticsearch_enabled": ELASTICSEARCH_ENABLED,
+        "elasticsearch_index": ELASTICSEARCH_INDEX,
         "max_chunk_size": MAX_CHUNK_SIZE,
         "min_chunk_size": MIN_CHUNK_SIZE,
         "chunk_overlap": CHUNK_OVERLAP,
@@ -58,6 +66,7 @@ def log_config() -> None:
     """Log the current configuration settings."""
     logging.info("Document Processing API Configuration:")
     logging.info(f"  ChromaDB: {CHROMA_HOST}:{CHROMA_PORT}")
+    logging.info(f"  Elasticsearch: {ELASTICSEARCH_URL} (enabled: {ELASTICSEARCH_ENABLED})")
     logging.info(f"  Document chunking settings:")
     logging.info(f"    ENABLE_CHUNKING: {ENABLE_CHUNKING}")
     logging.info(f"    MAX_CHUNK_SIZE: {MAX_CHUNK_SIZE} chars")
