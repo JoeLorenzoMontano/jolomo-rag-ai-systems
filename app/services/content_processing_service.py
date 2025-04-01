@@ -469,14 +469,27 @@ class ContentProcessingService:
         
         return successful, failed
     
-    def process_single_file_task(self, job_id: str, file_path: str, generate_questions: bool = None) -> None:
+    def process_single_file_task(self, job_id: str, file_path: str, 
+                             chunk_size: Optional[int] = None,
+                             min_size: Optional[int] = None,
+                             overlap: Optional[int] = None,
+                             enable_chunking: Optional[bool] = None,
+                             enhance_chunks: bool = True,
+                             generate_questions: Optional[bool] = None,
+                             max_questions_per_chunk: Optional[int] = None) -> None:
         """
         Process a single uploaded file as a background task.
         
         Args:
             job_id: ID of the job for tracking
             file_path: Path to the file to process
+            chunk_size: Optional override for max chunk size
+            min_size: Optional override for min chunk size
+            overlap: Optional override for chunk overlap
+            enable_chunking: Optional override for chunking enabled
+            enhance_chunks: Whether to enhance chunks with semantic enrichment
             generate_questions: Whether to generate questions for each chunk
+            max_questions_per_chunk: Maximum number of questions to generate per chunk
         """
         try:
             # Update job status to processing
@@ -503,8 +516,29 @@ class ContentProcessingService:
                     # Use relative path as identifier
                     rel_path = os.path.relpath(file_path, self.docs_folder)
                     
-                    # Apply chunking
-                    chunks = self.text_chunker.chunk_text(content, rel_path)
+                    # Apply chunking with overrides if provided
+                    temp_max_chunk_size = chunk_size if chunk_size is not None else self.text_chunker.max_chunk_size
+                    temp_min_chunk_size = min_size if min_size is not None else self.text_chunker.min_chunk_size
+                    temp_chunk_overlap = overlap if overlap is not None else self.text_chunker.chunk_overlap
+                    temp_enable_chunking = enable_chunking if enable_chunking is not None else self.text_chunker.enable_chunking
+                    
+                    # Create a temporary text chunker with custom settings
+                    temp_chunker = TextChunker(
+                        max_chunk_size=temp_max_chunk_size,
+                        min_chunk_size=temp_min_chunk_size,
+                        chunk_overlap=temp_chunk_overlap,
+                        enable_chunking=temp_enable_chunking
+                    )
+                    
+                    # Log chunking settings
+                    self.logger.info(f"Job {job_id}: Using chunking settings:")
+                    self.logger.info(f"  ENABLE_CHUNKING: {temp_enable_chunking}")
+                    self.logger.info(f"  MAX_CHUNK_SIZE: {temp_max_chunk_size} chars")
+                    self.logger.info(f"  MIN_CHUNK_SIZE: {temp_min_chunk_size} chars")
+                    self.logger.info(f"  CHUNK_OVERLAP: {temp_chunk_overlap} chars")
+                    
+                    # Apply chunking with custom settings
+                    chunks = temp_chunker.chunk_text(content, rel_path)
                     
                     # Add chunks to our collection
                     for chunk_text, chunk_id in chunks:
@@ -552,52 +586,61 @@ class ContentProcessingService:
                     metadata = {"original_text": chunk_text}
                     
                     # Generate semantic enrichment with context
-                    try:
-                        # Get previous and next chunks for context if they exist
-                        prev_chunk_text = None
-                        next_chunk_text = None
-                        
-                        if i > 0:
-                            prev_chunk_text = chunk_pairs[i-1][0]
+                    if enhance_chunks:
+                        try:
+                            # Get previous and next chunks for context if they exist
+                            prev_chunk_text = None
+                            next_chunk_text = None
                             
-                        if i < len(chunk_pairs) - 1:
-                            next_chunk_text = chunk_pairs[i+1][0]
-                        
-                        # Generate enrichment with context
-                        enrichment = self.ollama_client.generate_semantic_enrichment(
-                            chunk_text, 
-                            chunk_id,
-                            prev_chunk_text,
-                            next_chunk_text
-                        )
-                        
-                        if enrichment.strip():
-                            # Create the enhanced text by combining original with enrichment
-                            enhanced_text = f"{chunk_text}\n\nENRICHMENT:\n{enrichment}"
+                            if i > 0:
+                                prev_chunk_text = chunk_pairs[i-1][0]
+                                
+                            if i < len(chunk_pairs) - 1:
+                                next_chunk_text = chunk_pairs[i+1][0]
                             
-                            # Use the enhanced text for embedding
-                            processing_text = enhanced_text
+                            # Generate enrichment with context
+                            enrichment = self.ollama_client.generate_semantic_enrichment(
+                                chunk_text, 
+                                chunk_id,
+                                prev_chunk_text,
+                                next_chunk_text
+                            )
                             
-                            # Store both original and enrichment in metadata
-                            metadata["has_enrichment"] = True
-                            metadata["enrichment"] = enrichment
-                            
-                            self.logger.info(f"Job {job_id}: Enhanced chunk {chunk_id} with contextual summary")
-                    except Exception as e:
-                        self.logger.error(f"Job {job_id}: Error generating enrichment: {e}")
+                            if enrichment.strip():
+                                # Create the enhanced text by combining original with enrichment
+                                enhanced_text = f"{chunk_text}\n\nENRICHMENT:\n{enrichment}"
+                                
+                                # Use the enhanced text for embedding
+                                processing_text = enhanced_text
+                                
+                                # Store both original and enrichment in metadata
+                                metadata["has_enrichment"] = True
+                                metadata["enrichment"] = enrichment
+                                
+                                self.logger.info(f"Job {job_id}: Enhanced chunk {chunk_id} with contextual summary")
+                        except Exception as e:
+                            self.logger.error(f"Job {job_id}: Error generating enrichment: {e}")
+                            metadata["has_enrichment"] = False
+                            metadata["enrichment_error"] = str(e)
+                    else:
                         metadata["has_enrichment"] = False
-                        metadata["enrichment_error"] = str(e)
                     
                     # Generate questions from chunk if enabled
-                    use_generate_questions = generate_questions if generate_questions is not None else self.generate_questions
-                    if use_generate_questions:
+                    temp_generate_questions = generate_questions if generate_questions is not None else self.generate_questions
+                    temp_max_questions = max_questions_per_chunk if max_questions_per_chunk is not None else self.max_questions_per_chunk
+                    
+                    # Log question generation settings
+                    if temp_generate_questions:
+                        self.logger.info(f"Job {job_id}: Question generation is ENABLED (max {temp_max_questions} per chunk)")
+                    
+                    if temp_generate_questions:
                         try:
                             # Generate questions and answers
                             self.logger.info(f"Job {job_id}: Generating questions for chunk {chunk_id}")
                             questions_answers = self.ollama_client.generate_questions_from_chunk(
                                 chunk_text, 
                                 chunk_id,
-                                self.max_questions_per_chunk
+                                temp_max_questions
                             )
                             
                             if questions_answers and len(questions_answers) > 0:
@@ -693,6 +736,22 @@ class ContentProcessingService:
                     "error": str(e)
                 }
             
+            # Prepare enrichment status information
+            enrichment_status = {
+                "enabled": enhance_chunks,
+                "chunks_processed": successful
+            }
+            
+            # Prepare question generation status information
+            temp_generate_questions = generate_questions if generate_questions is not None else self.generate_questions
+            temp_max_questions = max_questions_per_chunk if max_questions_per_chunk is not None else self.max_questions_per_chunk
+            
+            question_generation_status = {
+                "enabled": temp_generate_questions,
+                "max_questions_per_chunk": temp_max_questions,
+                "chunks_processed": successful
+            }
+            
             # Finalize job
             result = {
                 "message": "File processed successfully" if failed == 0 else "File processed with some errors",
@@ -701,7 +760,9 @@ class ContentProcessingService:
                 "successful_chunks": successful,
                 "failed_chunks": failed,
                 "failed_items": failed_files if failed > 0 else None,
-                "term_extraction": term_update_status
+                "term_extraction": term_update_status,
+                "semantic_enrichment": enrichment_status,
+                "question_generation": question_generation_status
             }
             self.job_service.mark_job_completed(job_id, result)
             

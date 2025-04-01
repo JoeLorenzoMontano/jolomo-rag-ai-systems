@@ -295,9 +295,36 @@ def upload_file():
         # Check if process_immediately is set
         process_immediately = request.form.get('process_immediately', 'false').lower() == 'true'
         
+        # Get chunking parameters if provided
+        chunk_size = request.form.get('chunk_size')
+        min_size = request.form.get('min_size')
+        overlap = request.form.get('overlap')
+        enable_chunking = request.form.get('enable_chunking')
+        enhance_chunks = request.form.get('enhance_chunks')
+        generate_questions = request.form.get('generate_questions')
+        max_questions_per_chunk = request.form.get('max_questions_per_chunk')
+        
         # Forward the file to the API
         files = {'file': (file.filename, file.read(), file.content_type)}
+        
+        # Build data dictionary with all parameters
         data = {'process_immediately': str(process_immediately)}
+        
+        # Add chunking parameters if provided
+        if chunk_size and chunk_size.isdigit():
+            data['chunk_size'] = chunk_size
+        if min_size and min_size.isdigit():
+            data['min_size'] = min_size
+        if overlap and overlap.isdigit():
+            data['overlap'] = overlap
+        if enable_chunking is not None:
+            data['enable_chunking'] = enable_chunking
+        if enhance_chunks is not None:
+            data['enhance_chunks'] = enhance_chunks
+        if generate_questions is not None:
+            data['generate_questions'] = generate_questions
+        if max_questions_per_chunk and max_questions_per_chunk.isdigit():
+            data['max_questions_per_chunk'] = max_questions_per_chunk
         
         response = requests.post(
             f"{API_URL}/upload-file",

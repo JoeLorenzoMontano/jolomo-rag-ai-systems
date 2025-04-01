@@ -68,7 +68,14 @@ async def process_documents(
 async def upload_file(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
-    process_immediately: bool = Form(False)
+    process_immediately: bool = Form(False),
+    chunk_size: Optional[int] = Form(None, description="Override max chunk size (chars)"),
+    min_size: Optional[int] = Form(None, description="Override min chunk size (chars)"),
+    overlap: Optional[int] = Form(None, description="Override chunk overlap (chars)"),
+    enable_chunking: Optional[bool] = Form(None, description="Override chunking enabled setting"),
+    enhance_chunks: Optional[bool] = Form(True, description="Generate additional content with Ollama to improve retrieval"),
+    generate_questions: Optional[bool] = Form(True, description="Generate questions for each chunk"),
+    max_questions_per_chunk: Optional[int] = Form(5, description="Maximum number of questions to generate per chunk")
 ):
     """Upload a file for processing."""
     document_service = get_document_service()
@@ -110,7 +117,14 @@ async def upload_file(
             job_id = job_service.create_job(
                 job_type="file_processing",
                 settings={
-                    "file_path": file_path
+                    "file_path": file_path,
+                    "chunk_size": chunk_size,
+                    "min_size": min_size,
+                    "overlap": overlap,
+                    "enable_chunking": enable_chunking,
+                    "enhance_chunks": enhance_chunks,
+                    "generate_questions": generate_questions,
+                    "max_questions_per_chunk": max_questions_per_chunk
                 }
             )
             
@@ -118,7 +132,14 @@ async def upload_file(
             background_tasks.add_task(
                 document_service.process_single_file_task,
                 job_id=job_id,
-                file_path=file_path
+                file_path=file_path,
+                chunk_size=chunk_size,
+                min_size=min_size, 
+                overlap=overlap,
+                enable_chunking=enable_chunking,
+                enhance_chunks=enhance_chunks,
+                generate_questions=generate_questions,
+                max_questions_per_chunk=max_questions_per_chunk
             )
             
             # Add job information to the result

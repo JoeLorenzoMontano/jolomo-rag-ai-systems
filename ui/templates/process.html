@@ -718,6 +718,24 @@
                 formData.append('file', file);
                 formData.append('process_immediately', processImmediately.checked);
                 
+                // Add chunking settings from main form
+                const enableChunking = enableChunkingSwitch.checked;
+                const chunkSize = document.getElementById('chunk-size').value;
+                const minSize = document.getElementById('min-size').value;
+                const overlap = document.getElementById('overlap').value;
+                const enableEnrichment = document.getElementById('enable-enrichment').checked;
+                const enableQuestions = enableQuestionsSwitch.checked;
+                const maxQuestions = document.getElementById('max-questions').value;
+                
+                // Add these settings to the form data
+                formData.append('enable_chunking', enableChunking);
+                formData.append('chunk_size', chunkSize);
+                formData.append('min_size', minSize);
+                formData.append('overlap', overlap);
+                formData.append('enhance_chunks', enableEnrichment);
+                formData.append('generate_questions', enableQuestions);
+                formData.append('max_questions_per_chunk', maxQuestions);
+                
                 try {
                     // Send request to upload file
                     const response = await fetch('/api/upload-file', {
