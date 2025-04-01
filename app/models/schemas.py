@@ -66,6 +66,15 @@ class FileUploadResponse(BaseModel):
     processing_status: Optional[str] = Field(None, description="Status of processing if started")
 
 
+class DeleteDocumentResponse(BaseModel):
+    """Response schema for document deletion."""
+    status: str = Field(description="Status of the deletion")
+    message: str = Field(description="Status message")
+    document: str = Field(description="Document that was deleted")
+    chunks_deleted: int = Field(description="Number of chunks deleted from ChromaDB")
+    es_chunks_deleted: Optional[int] = Field(None, description="Number of chunks deleted from Elasticsearch")
+
+
 class ChatMessage(BaseModel):
     """Schema for a chat message."""
     role: str = Field(description="Role of the message sender (user or assistant)")

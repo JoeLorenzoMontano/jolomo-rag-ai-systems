@@ -580,6 +580,42 @@ class ElasticsearchService:
         except Exception as e:
             self.logger.error(f"Error deleting documents: {e}")
             raise
+            
+    def delete_document_by_filename(self, filename: str) -> int:
+        """
+        Delete all chunks associated with a specific document filename.
+        
+        Args:
+            filename: Name of the document file to delete
+            
+        Returns:
+            Number of chunks deleted
+        """
+        try:
+            # Get count before deletion
+            query = {
+                "query": {
+                    "term": {
+                        "metadata.filename": filename
+                    }
+                }
+            }
+            
+            # Execute delete by query
+            response = self.client.delete_by_query(
+                index=self.index_name,
+                body=query,
+                refresh=True
+            )
+            
+            deleted_count = response.get('deleted', 0)
+            self.logger.info(f"Deleted {deleted_count} chunks for document {filename} from Elasticsearch")
+            
+            return deleted_count
+            
+        except Exception as e:
+            self.logger.error(f"Error deleting document {filename} from Elasticsearch: {e}")
+            raise
     
     def is_healthy(self) -> Tuple[bool, str]:
         """

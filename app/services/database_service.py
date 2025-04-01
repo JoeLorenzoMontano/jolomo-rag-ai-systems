@@ -208,6 +208,40 @@ class DatabaseService:
         except Exception as e:
             self.logger.error(f"Error deleting documents: {e}")
             raise
+            
+    def delete_document_by_filename(self, filename: str) -> int:
+        """
+        Delete all chunks associated with a specific document filename.
+        
+        Args:
+            filename: Name of the document file to delete
+            
+        Returns:
+            Number of chunks deleted
+        """
+        try:
+            # Get all chunks that match the filename in metadata
+            results = self.collection.get(
+                where={"filename": filename},
+                include=[]
+            )
+            
+            if not results or "ids" not in results or not results["ids"]:
+                self.logger.info(f"No chunks found for document: {filename}")
+                return 0
+                
+            # Get the count of chunks to be deleted
+            count = len(results["ids"])
+            
+            # Delete the chunks
+            self.collection.delete(ids=results["ids"])
+            self.logger.info(f"Deleted {count} chunks for document: {filename}")
+            
+            return count
+            
+        except Exception as e:
+            self.logger.error(f"Error deleting document {filename}: {e}")
+            raise
     
     def is_healthy(self) -> Tuple[bool, str]:
         """

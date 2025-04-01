@@ -231,6 +231,58 @@ async def clear_database():
             "message": f"Error clearing database: {str(e)}"
         }
 
+@router.delete("/document/{filename}", summary="Delete document", 
+             description="Delete a specific document and all its chunks from ChromaDB and Elasticsearch (if enabled).",
+             response_model=DeleteDocumentResponse)
+async def delete_document(filename: str):
+    """Delete a specific document and all its chunks."""
+    db_service = get_db_service()
+    query_classifier_service = get_document_service().query_classifier
+    document_service = get_document_service()
+    
+    try:
+        # Delete document chunks from ChromaDB
+        chroma_chunks_deleted = db_service.delete_document_by_filename(filename)
+        
+        # Initialize Elasticsearch result
+        es_chunks_deleted = None
+        
+        # Delete from Elasticsearch if it's available
+        if hasattr(document_service, 'elasticsearch_service') and document_service.elasticsearch_service:
+            try:
+                es_chunks_deleted = document_service.elasticsearch_service.delete_document_by_filename(filename)
+            except Exception as es_error:
+                # Log the error but continue with the operation
+                print(f"Error deleting from Elasticsearch: {es_error}")
+        
+        # Refresh domain terms if documents were deleted
+        if chroma_chunks_deleted > 0:
+            try:
+                query_classifier_service.update_terms_from_db(db_service.collection)
+            except Exception as e:
+                print(f"Error refreshing domain terms after document deletion: {e}")
+        
+        # Create user-friendly message
+        message = f"Document '{filename}' deleted successfully with {chroma_chunks_deleted} chunks from ChromaDB"
+        if es_chunks_deleted is not None:
+            message += f" and {es_chunks_deleted} chunks from Elasticsearch"
+        
+        return {
+            "status": "success",
+            "message": message,
+            "document": filename,
+            "chunks_deleted": chroma_chunks_deleted,
+            "es_chunks_deleted": es_chunks_deleted
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error deleting document: {str(e)}",
+            "document": filename,
+            "chunks_deleted": 0,
+            "es_chunks_deleted": None
+        }
+
 @router.get("/chunks", summary="List document chunks", 
           description="Retrieve chunks stored in ChromaDB with optional filtering.",
           response_model=ChunkListResponse)
