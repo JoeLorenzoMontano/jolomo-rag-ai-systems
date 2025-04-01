@@ -645,7 +645,8 @@ class ContentProcessingService:
                             
                             if questions_answers and len(questions_answers) > 0:
                                 metadata["has_questions"] = True
-                                metadata["questions"] = questions_answers
+                                # Store questions as a JSON string to ensure compatibility with ChromaDB
+                                metadata["questions_json"] = json.dumps(questions_answers)
                                 # Log the questions generated
                                 self.logger.info(f"Job {job_id}: Generated {len(questions_answers)} questions for chunk {chunk_id}")
                                 question_texts = [qa["question"] for qa in questions_answers]

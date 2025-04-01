@@ -5,6 +5,8 @@ This module handles query processing, document retrieval, and response generatio
 """
 
 import logging
+import json
+import re
 from typing import Dict, List, Any, Tuple, Optional, Union
 
 from utils.ollama_client import OllamaClient
@@ -518,12 +520,18 @@ class QueryService:
         # Check each document's metadata for pre-generated questions
         for i, metadata in enumerate(metadatas):
             # Skip if document has no questions
-            if not metadata.get("has_questions", False) or "questions" not in metadata:
+            if not metadata.get("has_questions", False) or "questions_json" not in metadata:
                 continue
                 
-            # Get the questions from metadata
-            questions = metadata.get("questions", [])
-            if not questions:
+            # Get the questions from metadata (stored as JSON string)
+            try:
+                questions_json = metadata.get("questions_json", "[]")
+                questions = json.loads(questions_json)
+                if not questions:
+                    continue
+            except json.JSONDecodeError:
+                # If JSON parsing fails, skip this document
+                self.logger.warning(f"Error parsing questions JSON for document {metadata.get('chunk_id', '')}")
                 continue
                 
             # Store the document text for context
@@ -602,7 +610,7 @@ class QueryService:
         union = tokens1.union(tokens2)
         
         return len(intersection) / len(union)
-
+    
     def _combine_chunks(self, 
                        docs: List[str], 
                        ids: List[str], 
@@ -779,110 +787,3 @@ class QueryService:
             }
             
             return error_response
-            
-    def _find_matching_questions(self, user_query: str, metadatas: List[Dict[str, Any]], docs: List[str]) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """
-        Find pre-generated questions that match the user's query from the retrieved document metadata.
-        
-        Args:
-            user_query: The user's query string
-            metadatas: List of metadata dictionaries from retrieved documents
-            docs: List of document texts corresponding to the metadata
-            
-        Returns:
-            Tuple of (list_of_matching_questions, exact_match_if_found)
-        """
-        matching_questions = []
-        exact_match = None
-        
-        # Normalize user query for better matching (lowercase, strip punctuation)
-        normalized_query = user_query.lower().strip()
-        normalized_query = re.sub(r'[^\w\s]', '', normalized_query)
-        
-        # Check each document's metadata for pre-generated questions
-        for i, metadata in enumerate(metadatas):
-            # Skip if document has no questions
-            if not metadata.get("has_questions", False) or "questions" not in metadata:
-                continue
-                
-            # Get the questions from metadata
-            questions = metadata.get("questions", [])
-            if not questions:
-                continue
-                
-            # Store the document text for context
-            doc_text = docs[i] if i < len(docs) else ""
-            
-            for qa_pair in questions:
-                if not isinstance(qa_pair, dict) or "question" not in qa_pair or "answer" not in qa_pair:
-                    continue
-                    
-                question = qa_pair["question"]
-                answer = qa_pair["answer"]
-                
-                # Skip empty questions/answers
-                if not question.strip() or not answer.strip():
-                    continue
-                    
-                # Normalize the pre-generated question
-                normalized_question = question.lower().strip()
-                normalized_question = re.sub(r'[^\w\s]', '', normalized_question)
-                
-                # Check for exact match
-                if normalized_query == normalized_question:
-                    exact_match = {
-                        "question": question,
-                        "answer": answer,
-                        "chunk_text": doc_text,
-                        "document_id": metadata.get("chunk_id", ""),
-                        "filename": metadata.get("filename", ""),
-                        "score": 1.0
-                    }
-                    # Don't break here - continue to collect all matches
-                
-                # Check for high similarity or contained questions
-                # Simple substring match
-                elif (normalized_query in normalized_question or 
-                      normalized_question in normalized_query or
-                      self._compute_token_similarity(normalized_query, normalized_question) > 0.7):
-                    
-                    # Compute similarity score
-                    similarity = self._compute_token_similarity(normalized_query, normalized_question)
-                    
-                    matching_questions.append({
-                        "question": question,
-                        "answer": answer,
-                        "chunk_text": doc_text,
-                        "document_id": metadata.get("chunk_id", ""),
-                        "filename": metadata.get("filename", ""),
-                        "score": similarity
-                    })
-        
-        # Sort matching questions by relevance score
-        matching_questions.sort(key=lambda x: x["score"], reverse=True)
-        
-        return matching_questions, exact_match
-    
-    def _compute_token_similarity(self, text1: str, text2: str) -> float:
-        """
-        Compute similarity between two text strings based on token overlap.
-        
-        Args:
-            text1: First text string
-            text2: Second text string
-            
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        # Split texts into word tokens
-        tokens1 = set(text1.split())
-        tokens2 = set(text2.split())
-        
-        # Compute Jaccard similarity
-        if not tokens1 or not tokens2:
-            return 0.0
-            
-        intersection = tokens1.intersection(tokens2)
-        union = tokens1.union(tokens2)
-        
-        return len(intersection) / len(union)
