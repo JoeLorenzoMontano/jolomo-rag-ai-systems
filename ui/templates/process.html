@@ -71,6 +71,27 @@
                         </div>
                     </div>
                     
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">Question Generation</div>
+                        <div class="card-body">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="enable-questions" checked>
+                                <label class="form-check-label" for="enable-questions">Generate Questions for Chunks</label>
+                            </div>
+                            <div id="question-settings">
+                                <div class="mb-3">
+                                    <label for="max-questions" class="form-label">Maximum Questions per Chunk</label>
+                                    <input type="number" class="form-control" id="max-questions" value="5" min="1" max="10">
+                                    <div class="form-text">Maximum number of questions to generate for each chunk</div>
+                                </div>
+                            </div>
+                            <p class="text-muted small mb-0">
+                                When enabled, Ollama will generate potential questions that can be answered by each chunk.
+                                This helps match user queries directly to pre-generated Q&A pairs for improved response accuracy.
+                            </p>
+                        </div>
+                    </div>
+                    
                     <button type="submit" class="btn btn-primary" id="process-button">
                         <span id="process-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         Process Documents
@@ -270,6 +291,8 @@
             // Elements - Form and Settings
             const enableChunkingSwitch = document.getElementById('enable-chunking');
             const chunkingSettings = document.getElementById('chunking-settings');
+            const enableQuestionsSwitch = document.getElementById('enable-questions');
+            const questionSettings = document.getElementById('question-settings');
             const processForm = document.getElementById('process-form');
             const processButton = document.getElementById('process-button');
             const processSpinner = document.getElementById('process-spinner');
@@ -310,6 +333,15 @@
                     chunkingSettings.classList.remove('d-none');
                 } else {
                     chunkingSettings.classList.add('d-none');
+                }
+            });
+            
+            // Toggle question generation settings visibility
+            enableQuestionsSwitch.addEventListener('change', () => {
+                if (enableQuestionsSwitch.checked) {
+                    questionSettings.classList.remove('d-none');
+                } else {
+                    questionSettings.classList.add('d-none');
                 }
             });
             
@@ -468,6 +500,20 @@
                             <h5>Semantic Enrichment</h5>
                             <div class="badge bg-${statusColor} mb-2">${enrichment.enabled ? 'Enabled' : 'Disabled'}</div>
                             <p class="mb-0">Chunks processed with enrichment: ${enrichment.chunks_processed}</p>
+                        </div>
+                    `;
+                }
+                
+                // Add question generation status if available
+                if (result.question_generation) {
+                    const questionGen = result.question_generation;
+                    const statusColor = questionGen.enabled ? 'success' : 'secondary';
+                    resultHtml += `
+                        <div class="mt-3">
+                            <h5>Question Generation</h5>
+                            <div class="badge bg-${statusColor} mb-2">${questionGen.enabled ? 'Enabled' : 'Disabled'}</div>
+                            <p class="mb-0">Chunks processed with questions: ${questionGen.chunks_processed}</p>
+                            <p class="mb-0">Max questions per chunk: ${questionGen.max_questions_per_chunk}</p>
                         </div>
                     `;
                 }
@@ -778,6 +824,8 @@
                 const minSize = document.getElementById('min-size').value;
                 const overlap = document.getElementById('overlap').value;
                 const enableEnrichment = document.getElementById('enable-enrichment').checked;
+                const enableQuestions = enableQuestionsSwitch.checked;
+                const maxQuestions = document.getElementById('max-questions').value;
                 
                 // Create form data
                 const formData = new FormData();
@@ -786,6 +834,8 @@
                 formData.append('min_size', minSize);
                 formData.append('overlap', overlap);
                 formData.append('enhance_chunks', enableEnrichment);
+                formData.append('generate_questions', enableQuestions);
+                formData.append('max_questions_per_chunk', maxQuestions);
                 
                 try {
                     // Send request to start processing

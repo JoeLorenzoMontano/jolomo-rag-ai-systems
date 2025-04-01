@@ -33,7 +33,9 @@ class ContentProcessingService:
                 min_chunk_size: int = 200,
                 chunk_overlap: int = 100,
                 enable_chunking: bool = True,
-                elasticsearch_service: ElasticsearchService = None):
+                elasticsearch_service: ElasticsearchService = None,
+                generate_questions: bool = True,
+                max_questions_per_chunk: int = 5):
         """
         Initialize the content processing service.
         
@@ -48,6 +50,8 @@ class ContentProcessingService:
             chunk_overlap: Overlap between chunks
             enable_chunking: Whether to enable chunking
             elasticsearch_service: Optional Elasticsearch service
+            generate_questions: Whether to generate questions for each chunk
+            max_questions_per_chunk: Maximum number of questions to generate per chunk
         """
         self.db_service = db_service
         self.job_service = job_service
@@ -56,6 +60,8 @@ class ContentProcessingService:
         self.docs_folder = docs_folder
         self.elasticsearch_service = elasticsearch_service
         self.elasticsearch_enabled = ELASTICSEARCH_ENABLED and elasticsearch_service is not None
+        self.generate_questions = generate_questions
+        self.max_questions_per_chunk = max_questions_per_chunk
         
         # Initialize text chunker with default settings
         self.text_chunker = TextChunker(
@@ -79,7 +85,9 @@ class ContentProcessingService:
                               min_size: Optional[int] = None,
                               overlap: Optional[int] = None,
                               enable_chunking: Optional[bool] = None,
-                              enhance_chunks: bool = True) -> None:
+                              enhance_chunks: bool = True,
+                              generate_questions: Optional[bool] = None,
+                              max_questions_per_chunk: Optional[int] = None) -> None:
         """
         Process all documents in the docs folder as a background task.
         
@@ -90,6 +98,8 @@ class ContentProcessingService:
             overlap: Optional override for chunk overlap
             enable_chunking: Optional override for chunking enabled
             enhance_chunks: Whether to enhance chunks with semantic enrichment
+            generate_questions: Whether to generate questions for each chunk
+            max_questions_per_chunk: Maximum number of questions to generate per chunk
         """
         # Keep track of results
         successful = 0
@@ -108,10 +118,16 @@ class ContentProcessingService:
             temp_min_chunk_size = min_size if min_size is not None else self.text_chunker.min_chunk_size
             temp_chunk_overlap = overlap if overlap is not None else self.text_chunker.chunk_overlap
             temp_enable_chunking = enable_chunking if enable_chunking is not None else self.text_chunker.enable_chunking
+            temp_generate_questions = generate_questions if generate_questions is not None else self.generate_questions
+            temp_max_questions_per_chunk = max_questions_per_chunk if max_questions_per_chunk is not None else self.max_questions_per_chunk
             
             # Log if semantic enrichment is enabled
             if enhance_chunks:
                 self.logger.info(f"Job {job_id}: Semantic chunk enrichment is ENABLED")
+                
+            # Log if question generation is enabled
+            if temp_generate_questions:
+                self.logger.info(f"Job {job_id}: Question generation is ENABLED (max {temp_max_questions_per_chunk} per chunk)")
             
             # Log chunking settings for this run
             self.logger.info(f"Job {job_id}: Using chunking settings:")
@@ -128,7 +144,9 @@ class ContentProcessingService:
                 temp_min_chunk_size,
                 temp_chunk_overlap,
                 temp_enable_chunking,
-                enhance_chunks
+                enhance_chunks,
+                temp_generate_questions,
+                temp_max_questions_per_chunk
             )
             
             # Update total files count
@@ -175,6 +193,13 @@ class ContentProcessingService:
                 "chunks_processed": successful
             }
             
+            # Prepare question generation status information
+            question_generation_status = {
+                "enabled": temp_generate_questions,
+                "max_questions_per_chunk": temp_max_questions_per_chunk,
+                "chunks_processed": successful
+            }
+            
             # Prepare result for completion
             result = {
                 "message": "All documents processed successfully" if failed == 0 else "Documents processed with some errors",
@@ -186,7 +211,8 @@ class ContentProcessingService:
                 "chunking_enabled": temp_enable_chunking,
                 "chunk_size": temp_max_chunk_size,
                 "term_extraction": term_update_status,
-                "semantic_enrichment": enrichment_status
+                "semantic_enrichment": enrichment_status,
+                "question_generation": question_generation_status
             }
             
             # Update job status to completed
@@ -213,7 +239,8 @@ class ContentProcessingService:
     def _process_directory(self, directory: str, job_id: str,
                           max_chunk_size: int, min_chunk_size: int, 
                           chunk_overlap: int, enable_chunking: bool,
-                          enhance_chunks: bool) -> Tuple[List[str], List[str], List[str], int, int, List[str]]:
+                          enhance_chunks: bool, generate_questions: bool = False,
+                          max_questions_per_chunk: int = 5) -> Tuple[List[str], List[str], List[str], int, int, List[str]]:
         """
         Process files in a directory recursively.
         
@@ -225,6 +252,8 @@ class ContentProcessingService:
             chunk_overlap: Chunk overlap
             enable_chunking: Whether chunking is enabled
             enhance_chunks: Whether to add semantic enrichment
+            generate_questions: Whether to generate questions for each chunk
+            max_questions_per_chunk: Maximum number of questions to generate per chunk
             
         Returns:
             Tuple of (source_files, all_chunks, all_chunk_ids, successful, failed, failed_files)
@@ -269,7 +298,8 @@ class ContentProcessingService:
                         
                         file_successful, file_failed = self._process_chunks(
                             chunk_list, all_chunks, all_chunk_ids, job_id, 
-                            enhance_chunks, failed_files
+                            enhance_chunks, failed_files, generate_questions,
+                            max_questions_per_chunk
                         )
                         
                         successful += file_successful
@@ -295,7 +325,9 @@ class ContentProcessingService:
     def _process_chunks(self, chunk_list: List[Tuple[str, str]], 
                       all_chunks: List[str], all_chunk_ids: List[str],
                       job_id: str, enhance_chunks: bool, 
-                      failed_files: List[str]) -> Tuple[int, int]:
+                      failed_files: List[str],
+                      generate_questions: bool = False,
+                      max_questions_per_chunk: int = 5) -> Tuple[int, int]:
         """
         Process and embed a list of document chunks.
         
@@ -306,6 +338,8 @@ class ContentProcessingService:
             job_id: Job ID for tracking
             enhance_chunks: Whether to add semantic enrichment
             failed_files: List to append failure records to
+            generate_questions: Whether to generate questions for each chunk
+            max_questions_per_chunk: Maximum number of questions to generate per chunk
             
         Returns:
             Tuple of (successful_count, failed_count)
@@ -363,6 +397,33 @@ class ContentProcessingService:
                         metadata["enrichment_error"] = str(e)
                 else:
                     metadata["has_enrichment"] = False
+                    
+                # Generate questions from chunk if enabled
+                if generate_questions:
+                    try:
+                        # Generate questions and answers
+                        self.logger.info(f"Job {job_id}: Generating questions for chunk {chunk_id}")
+                        questions_answers = self.ollama_client.generate_questions_from_chunk(
+                            chunk_text, 
+                            chunk_id,
+                            max_questions_per_chunk
+                        )
+                        
+                        if questions_answers and len(questions_answers) > 0:
+                            metadata["has_questions"] = True
+                            metadata["questions"] = questions_answers
+                            # Log the questions generated
+                            self.logger.info(f"Job {job_id}: Generated {len(questions_answers)} questions for chunk {chunk_id}")
+                            question_texts = [qa["question"] for qa in questions_answers]
+                            self.logger.info(f"Job {job_id}: Sample questions: {', '.join(question_texts[:2])}...")
+                        else:
+                            metadata["has_questions"] = False
+                    except Exception as e:
+                        self.logger.error(f"Job {job_id}: Error generating questions for {chunk_id}: {e}")
+                        metadata["has_questions"] = False
+                        metadata["questions_error"] = str(e)
+                else:
+                    metadata["has_questions"] = False
                 
                 # Generate embedding
                 embedding = self.ollama_client.generate_embedding(processing_text)
@@ -408,13 +469,14 @@ class ContentProcessingService:
         
         return successful, failed
     
-    def process_single_file_task(self, job_id: str, file_path: str) -> None:
+    def process_single_file_task(self, job_id: str, file_path: str, generate_questions: bool = None) -> None:
         """
         Process a single uploaded file as a background task.
         
         Args:
             job_id: ID of the job for tracking
             file_path: Path to the file to process
+            generate_questions: Whether to generate questions for each chunk
         """
         try:
             # Update job status to processing
@@ -525,6 +587,34 @@ class ContentProcessingService:
                         self.logger.error(f"Job {job_id}: Error generating enrichment: {e}")
                         metadata["has_enrichment"] = False
                         metadata["enrichment_error"] = str(e)
+                    
+                    # Generate questions from chunk if enabled
+                    use_generate_questions = generate_questions if generate_questions is not None else self.generate_questions
+                    if use_generate_questions:
+                        try:
+                            # Generate questions and answers
+                            self.logger.info(f"Job {job_id}: Generating questions for chunk {chunk_id}")
+                            questions_answers = self.ollama_client.generate_questions_from_chunk(
+                                chunk_text, 
+                                chunk_id,
+                                self.max_questions_per_chunk
+                            )
+                            
+                            if questions_answers and len(questions_answers) > 0:
+                                metadata["has_questions"] = True
+                                metadata["questions"] = questions_answers
+                                # Log the questions generated
+                                self.logger.info(f"Job {job_id}: Generated {len(questions_answers)} questions for chunk {chunk_id}")
+                                question_texts = [qa["question"] for qa in questions_answers]
+                                self.logger.info(f"Job {job_id}: Sample questions: {', '.join(question_texts[:2])}...")
+                            else:
+                                metadata["has_questions"] = False
+                        except Exception as e:
+                            self.logger.error(f"Job {job_id}: Error generating questions for {chunk_id}: {e}")
+                            metadata["has_questions"] = False
+                            metadata["questions_error"] = str(e)
+                    else:
+                        metadata["has_questions"] = False
                     
                     # Generate embedding
                     self.logger.info(f"Job {job_id}: Processing chunk {i+1}/{len(all_chunks)}")

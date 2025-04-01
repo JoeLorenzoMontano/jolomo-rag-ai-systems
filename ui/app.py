@@ -51,6 +51,8 @@ def process_documents():
     overlap = request.form.get('overlap')
     enable_chunking = request.form.get('enable_chunking')
     enhance_chunks = request.form.get('enhance_chunks')
+    generate_questions = request.form.get('generate_questions')
+    max_questions_per_chunk = request.form.get('max_questions_per_chunk')
     
     # Build query parameters
     params = {}
@@ -64,6 +66,10 @@ def process_documents():
         params['enable_chunking'] = enable_chunking.lower() == 'true'
     if enhance_chunks is not None:
         params['enhance_chunks'] = enhance_chunks.lower() == 'true'
+    if generate_questions is not None:
+        params['generate_questions'] = generate_questions.lower() == 'true'
+    if max_questions_per_chunk and max_questions_per_chunk.isdigit():
+        params['max_questions_per_chunk'] = int(max_questions_per_chunk)
     
     try:
         # Call the API - now it returns immediately with a job ID
@@ -118,7 +124,8 @@ def query_documents():
     enhance_query = data.get('enhance_query', True)
     use_elasticsearch = data.get('use_elasticsearch', None)  # None means auto-determine
     hybrid_search = data.get('hybrid_search', False)
-    apply_reranking = data.get('apply_reranking', True)  # Default to True
+    apply_reranking = data.get('apply_reranking', True)
+    check_question_matches = data.get('check_question_matches', True)  # Default to True
     
     if not query_text:
         return jsonify({"status": "error", "message": "Query text is required"})
@@ -137,7 +144,8 @@ def query_documents():
                 'enhance_query': enhance_query,
                 'use_elasticsearch': use_elasticsearch,
                 'hybrid_search': hybrid_search,
-                'apply_reranking': apply_reranking
+                'apply_reranking': apply_reranking,
+                'check_question_matches': check_question_matches
             },
             timeout=None
         )
@@ -161,6 +169,7 @@ def chat_query():
     use_elasticsearch = data.get('use_elasticsearch', None)  # None means auto-determine
     hybrid_search = data.get('hybrid_search', False)
     apply_reranking = data.get('apply_reranking', True)
+    check_question_matches = data.get('check_question_matches', True)  # Default to True
     
     # Ensure we have at least one user message
     has_user_message = False
@@ -188,7 +197,8 @@ def chat_query():
                 'enhance_query': enhance_query,
                 'use_elasticsearch': use_elasticsearch,
                 'hybrid_search': hybrid_search,
-                'apply_reranking': apply_reranking
+                'apply_reranking': apply_reranking,
+                'check_question_matches': check_question_matches
             },
             timeout=None
         )

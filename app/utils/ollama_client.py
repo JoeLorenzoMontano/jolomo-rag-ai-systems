@@ -1,6 +1,7 @@
 import requests
 import re
 import os
+import json
 from typing import List, Dict, Any, Optional, Union
 
 class OllamaClient:
@@ -428,3 +429,135 @@ class OllamaClient:
         summary = "SEMANTIC CONTEXT: " + summary
                 
         return summary.strip()
+        
+    def generate_questions_from_chunk(self, chunk_text: str, chunk_id: str, max_questions: int = 5) -> List[Dict[str, str]]:
+        """
+        Generates relevant questions that can be answered by the provided chunk text.
+        
+        Args:
+            chunk_text: The text content of the chunk
+            chunk_id: Identifier for the chunk
+            max_questions: Maximum number of questions to generate (default: 5)
+            
+        Returns:
+            List of dictionaries with question/answer pairs
+        """
+        # Check if the model exists, if not pull it
+        current_model = self.model
+        self._ensure_model_exists(current_model)
+        
+        # Prompt to generate questions and answers
+        prompt = f"""You are an expert at generating high-quality questions and answers from documents.
+
+        I'll provide text content, and your task is to generate {max_questions} diverse questions that:
+        1. Can be directly answered using information in the provided text
+        2. Cover different aspects and important details in the text
+        3. Range from simple factual questions to more complex conceptual questions
+        4. Would be useful for people searching for this information
+
+        For each question, also provide the specific answer from the text.
+
+        TEXT CHUNK:
+        ```
+        {chunk_text}
+        ```
+
+        INSTRUCTIONS:
+        - Focus ONLY on information explicitly stated in the text
+        - Do NOT generate questions that cannot be answered from the text
+        - Create questions that would help users discover this content when searching
+        - Ensure answers are concise and directly derived from the text
+        - Format your response as a JSON array with "question" and "answer" fields
+
+        Return ONLY the JSON array with no additional text, explanation or wrapping. Format example:
+        [
+            {{"question": "What is X?", "answer": "X is Y as mentioned in the text."}},
+            {{"question": "How does Z work?", "answer": "According to the text, Z works by..."}}
+        ]
+        """
+        
+        payload = {
+            "model": current_model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.2,  # Low temperature for focused results
+                "num_predict": 1000  # Allow enough tokens for several questions and answers
+            }
+        }
+        
+        try:
+            response = requests.post(f"{self.base_url}/api/generate", json=payload)
+            response.raise_for_status()
+            result = response.json()
+            
+            # Get the raw response text
+            raw_response = result.get("response", "").strip()
+            
+            # Remove any thinking indicators
+            cleaned_response = self._remove_think_regions(raw_response)
+            
+            # Extract the JSON content - handle potential formatting issues
+            try:
+                # Find JSON array in response
+                json_match = re.search(r'\[\s*\{.*\}\s*\]', cleaned_response, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    questions_answers = json.loads(json_str)
+                else:
+                    # If no JSON found, try the whole response
+                    questions_answers = json.loads(cleaned_response)
+                
+                print(f"Generated {len(questions_answers)} questions for chunk {chunk_id}")
+                
+                # Validate format and limit to max_questions
+                validated_results = []
+                for i, qa_pair in enumerate(questions_answers):
+                    if i >= max_questions:
+                        break
+                    if "question" in qa_pair and "answer" in qa_pair:
+                        validated_results.append({
+                            "question": qa_pair["question"].strip(),
+                            "answer": qa_pair["answer"].strip()
+                        })
+                
+                return validated_results
+                
+            except json.JSONDecodeError as json_error:
+                print(f"Error parsing generated questions as JSON: {json_error}")
+                print(f"Raw response: {cleaned_response}")
+                # Attempt manual extraction if JSON parsing failed
+                return self._extract_questions_fallback(cleaned_response, max_questions)
+                
+        except Exception as e:
+            print(f"Error generating questions for chunk {chunk_id}: {e}")
+            return []  # Return empty list on error
+    
+    def _extract_questions_fallback(self, text: str, max_questions: int = 5) -> List[Dict[str, str]]:
+        """
+        Fallback method to extract questions and answers if JSON parsing fails.
+        """
+        questions_answers = []
+        
+        # Look for patterns like "Q: ... A: ..." or "Question: ... Answer: ..."
+        qa_patterns = [
+            r'(?:Question|Q):\s*([^\n]+)\s*(?:Answer|A):\s*([^\n]+)',
+            r'(?:Question|Q):\s*([^\n]+)\s*(?:Answer|A):\s*([^\n]*(?:\n[^\n]+)*)',
+            r'"question":\s*"([^"]+)"[^"]*"answer":\s*"([^"]+)"'
+        ]
+        
+        for pattern in qa_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for q, a in matches:
+                if len(questions_answers) >= max_questions:
+                    break
+                    
+                questions_answers.append({
+                    "question": q.strip(),
+                    "answer": a.strip()
+                })
+                
+            if len(questions_answers) >= max_questions:
+                break
+                
+        return questions_answers
