@@ -156,29 +156,74 @@ async def upload_file(
             "file_path": ""
         }
 
-@router.post("/clear-db", summary="Clear the database", description="Clear all documents from ChromaDB.")
+@router.post("/clear-db", summary="Clear the database", description="Clear all documents from ChromaDB and Elasticsearch (if enabled).")
 async def clear_database():
-    """Clear all documents from the database."""
+    """Clear all documents from both ChromaDB and Elasticsearch."""
     db_service = get_db_service()
     query_classifier_service = get_document_service().query_classifier
+    document_service = get_document_service()
     
     try:
-        # Get current document count for reporting
-        doc_count = db_service.get_document_count()
+        # Get current document count for reporting from ChromaDB
+        chroma_doc_count = db_service.get_document_count()
         
-        # Delete all documents
+        # Clear ChromaDB
         db_service.delete_all_documents()
+        result = {
+            "chroma": {
+                "status": "success",
+                "documents_removed": chroma_doc_count
+            }
+        }
+        
+        # Clear Elasticsearch if it's available
+        es_result = {"status": "not_available", "documents_removed": 0}
+        
+        # Check if Elasticsearch service exists in document_service
+        if hasattr(document_service, 'elasticsearch_service') and document_service.elasticsearch_service:
+            try:
+                # Get document count before clearing
+                es_doc_count = document_service.elasticsearch_service.get_document_count()
+                
+                # Delete all documents
+                document_service.elasticsearch_service.delete_all_documents()
+                
+                es_result = {
+                    "status": "success",
+                    "documents_removed": es_doc_count
+                }
+            except Exception as es_error:
+                es_result = {
+                    "status": "error",
+                    "error": str(es_error),
+                    "documents_removed": 0
+                }
+        
+        result["elasticsearch"] = es_result
         
         # Refresh the domain terms to reflect the empty database
         try:
             query_classifier_service.update_terms_from_db(db_service.collection)
+            result["terms_updated"] = True
         except Exception as e:
             print(f"Error refreshing domain terms after clearing DB: {e}")
+            result["terms_updated"] = False
+            result["terms_error"] = str(e)
+        
+        # Create a user-friendly message
+        total_docs = chroma_doc_count + es_result.get("documents_removed", 0)
+        message = f"Databases cleared successfully. Removed {total_docs} documents"
+        if es_result["status"] == "success":
+            message += f" ({chroma_doc_count} from ChromaDB, {es_result['documents_removed']} from Elasticsearch)."
+        elif es_result["status"] == "error":
+            message += f" from ChromaDB. Error clearing Elasticsearch: {es_result['error']}"
+        else:
+            message += " from ChromaDB. Elasticsearch not available."
         
         return {
             "status": "success",
-            "message": f"Database cleared successfully. Removed {doc_count} documents.",
-            "documents_removed": doc_count
+            "message": message,
+            "result": result
         }
     except Exception as e:
         return {
