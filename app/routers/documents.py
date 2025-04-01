@@ -232,13 +232,26 @@ async def list_document_chunks(
             enrichment = metadata.get("enrichment", "")
             has_enrichment = metadata.get("has_enrichment", False)
             
+            # Get questions if they exist
+            has_questions = metadata.get("has_questions", False)
+            questions = []
+            if has_questions and "questions_json" in metadata:
+                try:
+                    import json
+                    questions_json = metadata.get("questions_json", "[]")
+                    questions = json.loads(questions_json)
+                except (json.JSONDecodeError, Exception) as e:
+                    print(f"Error parsing questions JSON for chunk {results['ids'][i]}: {e}")
+            
             chunks.append(ChunkInfo(
                 id=results["ids"][i],
                 text=original_text,
                 filename=file_name,
                 has_enrichment=has_enrichment,
                 enrichment=enrichment if has_enrichment else "",
-                embedding_dimension=embedding_dim
+                embedding_dimension=embedding_dim,
+                has_questions=has_questions,
+                questions=questions
             ))
         
         # Apply filters

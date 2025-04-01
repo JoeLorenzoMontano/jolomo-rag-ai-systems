@@ -36,6 +36,8 @@ class ChunkInfo(BaseModel):
     has_enrichment: bool = Field(description="Whether the chunk has semantic enrichment")
     enrichment: Optional[str] = Field("", description="Semantic enrichment if available")
     embedding_dimension: Optional[int] = Field(0, description="Dimension of the embedding vector")
+    has_questions: Optional[bool] = Field(False, description="Whether the chunk has generated questions")
+    questions: Optional[List[Dict[str, str]]] = Field([], description="List of questions generated for this chunk")
 
 
 class ChunkListResponse(BaseModel):
