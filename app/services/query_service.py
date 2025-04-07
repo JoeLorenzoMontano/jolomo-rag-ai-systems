@@ -7,8 +7,10 @@ This module handles query processing, document retrieval, and response generatio
 import logging
 import json
 import re
+import numpy as np
 from typing import Dict, List, Any, Tuple, Optional, Union
 
+from sentence_transformers import SentenceTransformer
 from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
 from utils.web_search import WebSearchClient
@@ -501,6 +503,7 @@ class QueryService:
     def _find_matching_questions(self, user_query: str, metadatas: List[Dict[str, Any]], docs: List[str]) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """
         Find pre-generated questions that match the user's query from the retrieved document metadata.
+        Uses embedding-based semantic similarity when possible, falling back to token similarity.
         
         Args:
             user_query: The user's query string
@@ -516,6 +519,16 @@ class QueryService:
         # Normalize user query for better matching (lowercase, strip punctuation)
         normalized_query = user_query.lower().strip()
         normalized_query = re.sub(r'[^\w\s]', '', normalized_query)
+        
+        # Generate embedding for user query for semantic matching
+        try:
+            query_embedding = self.ollama_client.generate_embedding(user_query)
+            use_embeddings = True
+            self.logger.info(f"Generated embedding for question matching with dimension: {len(query_embedding)}")
+        except Exception as e:
+            self.logger.warning(f"Could not generate embedding for question matching: {e}. Using token similarity instead.")
+            use_embeddings = False
+            query_embedding = None
         
         # Check each document's metadata for pre-generated questions
         for i, metadata in enumerate(metadatas):
@@ -552,7 +565,7 @@ class QueryService:
                 normalized_question = question.lower().strip()
                 normalized_question = re.sub(r'[^\w\s]', '', normalized_question)
                 
-                # Check for exact match
+                # Check for exact match first (normalized text comparison)
                 if normalized_query == normalized_question:
                     exact_match = {
                         "question": question,
@@ -563,24 +576,54 @@ class QueryService:
                         "score": 1.0
                     }
                     # Don't break here - continue to collect all matches
+                    
+                # Calculate similarity score
+                similarity = 0.0
                 
-                # Check for high similarity or contained questions
-                # Simple substring match
-                elif (normalized_query in normalized_question or 
-                      normalized_question in normalized_query or
-                      self._compute_token_similarity(normalized_query, normalized_question) > 0.7):
-                    
-                    # Compute similarity score
-                    similarity = self._compute_token_similarity(normalized_query, normalized_question)
-                    
-                    matching_questions.append({
-                        "question": question,
-                        "answer": answer,
-                        "chunk_text": doc_text,
-                        "document_id": metadata.get("chunk_id", ""),
-                        "filename": metadata.get("filename", ""),
-                        "score": similarity
-                    })
+                # Use embedding similarity when available
+                if use_embeddings:
+                    try:
+                        # Generate embedding for the question
+                        question_embedding = self.ollama_client.generate_embedding(question)
+                        
+                        # Calculate cosine similarity
+                        similarity = self._compute_embedding_similarity(query_embedding, question_embedding)
+                        
+                        # Use a higher threshold for embedding similarity (0.8)
+                        if similarity > 0.8:
+                            matching_questions.append({
+                                "question": question,
+                                "answer": answer,
+                                "chunk_text": doc_text,
+                                "document_id": metadata.get("chunk_id", ""),
+                                "filename": metadata.get("filename", ""),
+                                "score": similarity,
+                                "match_type": "semantic"
+                            })
+                    except Exception as e:
+                        # If embedding fails, fall back to token similarity
+                        self.logger.warning(f"Error generating embedding for question: {e}")
+                        use_embeddings = False
+                
+                # Fall back to token similarity if embeddings aren't available or failed
+                if not use_embeddings:
+                    # Simple substring match plus token similarity
+                    if (normalized_query in normalized_question or 
+                          normalized_question in normalized_query or
+                          self._compute_token_similarity(normalized_query, normalized_question) > 0.7):
+                        
+                        # Compute token-based similarity score
+                        similarity = self._compute_token_similarity(normalized_query, normalized_question)
+                        
+                        matching_questions.append({
+                            "question": question,
+                            "answer": answer,
+                            "chunk_text": doc_text,
+                            "document_id": metadata.get("chunk_id", ""),
+                            "filename": metadata.get("filename", ""),
+                            "score": similarity,
+                            "match_type": "token"
+                        })
         
         # Sort matching questions by relevance score
         matching_questions.sort(key=lambda x: x["score"], reverse=True)
@@ -610,6 +653,32 @@ class QueryService:
         union = tokens1.union(tokens2)
         
         return len(intersection) / len(union)
+        
+    def _compute_embedding_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """
+        Compute cosine similarity between two embeddings.
+        
+        Args:
+            embedding1: First embedding vector
+            embedding2: Second embedding vector
+            
+        Returns:
+            Cosine similarity score between 0.0 and 1.0
+        """
+        # Convert to numpy arrays for vector operations
+        vec1 = np.array(embedding1)
+        vec2 = np.array(embedding2)
+        
+        # Check for zero vectors
+        if np.all(vec1 == 0) or np.all(vec2 == 0):
+            return 0.0
+            
+        # Calculate cosine similarity: dot product divided by product of magnitudes
+        dot_product = np.dot(vec1, vec2)
+        norm1 = np.linalg.norm(vec1)
+        norm2 = np.linalg.norm(vec2)
+        
+        return dot_product / (norm1 * norm2)
     
     def _combine_chunks(self, 
                        docs: List[str], 
