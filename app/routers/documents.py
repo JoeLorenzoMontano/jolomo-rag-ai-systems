@@ -14,7 +14,7 @@ from core.dependencies import (
     get_job_service
 )
 from core.utils import clean_filename, filter_chunks_by_filename
-from models.schemas import FileUploadResponse, ChunkListResponse, ChunkInfo
+from models.schemas import FileUploadResponse, ChunkListResponse, ChunkInfo, DeleteDocumentResponse
 
 router = APIRouter(tags=["documents"])
 
