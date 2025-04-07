@@ -78,6 +78,12 @@
                                 <div class="form-text">Reorder retrieved documents based on relevance to the query</div>
                             </div>
                             
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="check-question-matches" checked>
+                                <label class="form-check-label" for="check-question-matches">Check Question Matches</label>
+                                <div class="form-text">Match query against pre-generated questions to find direct answers</div>
+                            </div>
+                            
                             <div id="web-search-options" class="mt-2">
                                 <label for="web-results-count" class="form-label">Number of Web Results</label>
                                 <input type="number" class="form-control" id="web-results-count" value="5" min="1" max="10">
@@ -185,6 +191,7 @@
                 const useElasticsearch = document.getElementById('use-elasticsearch').checked ? null : false; // null means auto
                 const hybridSearch = document.getElementById('hybrid-search').checked;
                 const applyReranking = document.getElementById('apply-reranking').checked;
+                const checkQuestionMatches = document.getElementById('check-question-matches').checked;
                 
                 if (!queryText) {
                     alert('Please enter a question');
@@ -227,7 +234,8 @@
                             enhance_query: enhanceQuery,
                             use_elasticsearch: useElasticsearch,
                             hybrid_search: hybridSearch,
-                            apply_reranking: applyReranking
+                            apply_reranking: applyReranking,
+                            check_question_matches: checkQuestionMatches
                         }),
                         signal: controller.signal
                     });
@@ -328,6 +336,30 @@
                                     <div class="alert alert-success mb-3">
                                         <i class="bi bi-lightbulb-fill me-2"></i> 
                                         <strong>Query Enhanced:</strong> Your query was enhanced to "${data.enhanced_query}"
+                                    </div>
+                                `;
+                            }
+                            
+                            // Display question match information if available
+                            if (data.exact_question_match) {
+                                sourcesHtml += `
+                                    <div class="alert alert-success mb-3">
+                                        <i class="bi bi-question-circle-fill me-2"></i> 
+                                        <strong>Exact Question Match Found:</strong> "${data.exact_question_match.question}"
+                                    </div>
+                                `;
+                            } else if (data.question_matches && data.question_matches.length > 0) {
+                                let matchesHtml = data.question_matches.map(match => 
+                                    `<li><strong>${match.question}</strong> <span class="badge bg-info">${(match.score * 100).toFixed(0)}% match</span></li>`
+                                ).join('');
+                                
+                                sourcesHtml += `
+                                    <div class="alert alert-info mb-3">
+                                        <i class="bi bi-question-circle me-2"></i> 
+                                        <strong>Similar Questions Found:</strong>
+                                        <ul class="mt-2">
+                                            ${matchesHtml}
+                                        </ul>
                                     </div>
                                 `;
                             }

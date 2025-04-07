@@ -36,6 +36,8 @@ class ChunkInfo(BaseModel):
     has_enrichment: bool = Field(description="Whether the chunk has semantic enrichment")
     enrichment: Optional[str] = Field("", description="Semantic enrichment if available")
     embedding_dimension: Optional[int] = Field(0, description="Dimension of the embedding vector")
+    has_questions: Optional[bool] = Field(False, description="Whether the chunk has generated questions")
+    questions: Optional[List[Dict[str, str]]] = Field([], description="List of questions generated for this chunk")
 
 
 class ChunkListResponse(BaseModel):
@@ -62,6 +64,15 @@ class FileUploadResponse(BaseModel):
     file_path: str = Field(description="Path to the saved file")
     job_id: Optional[str] = Field(None, description="Job ID if processing was started")
     processing_status: Optional[str] = Field(None, description="Status of processing if started")
+
+
+class DeleteDocumentResponse(BaseModel):
+    """Response schema for document deletion."""
+    status: str = Field(description="Status of the deletion")
+    message: str = Field(description="Status message")
+    document: str = Field(description="Document that was deleted")
+    chunks_deleted: int = Field(description="Number of chunks deleted from ChromaDB")
+    es_chunks_deleted: Optional[int] = Field(None, description="Number of chunks deleted from Elasticsearch")
 
 
 class ChatMessage(BaseModel):

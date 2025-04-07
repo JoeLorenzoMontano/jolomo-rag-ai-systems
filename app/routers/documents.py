@@ -14,7 +14,7 @@ from core.dependencies import (
     get_job_service
 )
 from core.utils import clean_filename, filter_chunks_by_filename
-from models.schemas import FileUploadResponse, ChunkListResponse, ChunkInfo
+from models.schemas import FileUploadResponse, ChunkListResponse, ChunkInfo, DeleteDocumentResponse
 
 router = APIRouter(tags=["documents"])
 
@@ -68,7 +68,14 @@ async def process_documents(
 async def upload_file(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
-    process_immediately: bool = Form(False)
+    process_immediately: bool = Form(False),
+    chunk_size: Optional[int] = Form(None, description="Override max chunk size (chars)"),
+    min_size: Optional[int] = Form(None, description="Override min chunk size (chars)"),
+    overlap: Optional[int] = Form(None, description="Override chunk overlap (chars)"),
+    enable_chunking: Optional[bool] = Form(None, description="Override chunking enabled setting"),
+    enhance_chunks: Optional[bool] = Form(True, description="Generate additional content with Ollama to improve retrieval"),
+    generate_questions: Optional[bool] = Form(True, description="Generate questions for each chunk"),
+    max_questions_per_chunk: Optional[int] = Form(5, description="Maximum number of questions to generate per chunk")
 ):
     """Upload a file for processing."""
     document_service = get_document_service()
@@ -110,7 +117,14 @@ async def upload_file(
             job_id = job_service.create_job(
                 job_type="file_processing",
                 settings={
-                    "file_path": file_path
+                    "file_path": file_path,
+                    "chunk_size": chunk_size,
+                    "min_size": min_size,
+                    "overlap": overlap,
+                    "enable_chunking": enable_chunking,
+                    "enhance_chunks": enhance_chunks,
+                    "generate_questions": generate_questions,
+                    "max_questions_per_chunk": max_questions_per_chunk
                 }
             )
             
@@ -118,7 +132,14 @@ async def upload_file(
             background_tasks.add_task(
                 document_service.process_single_file_task,
                 job_id=job_id,
-                file_path=file_path
+                file_path=file_path,
+                chunk_size=chunk_size,
+                min_size=min_size, 
+                overlap=overlap,
+                enable_chunking=enable_chunking,
+                enhance_chunks=enhance_chunks,
+                generate_questions=generate_questions,
+                max_questions_per_chunk=max_questions_per_chunk
             )
             
             # Add job information to the result
@@ -135,34 +156,131 @@ async def upload_file(
             "file_path": ""
         }
 
-@router.post("/clear-db", summary="Clear the database", description="Clear all documents from ChromaDB.")
+@router.post("/clear-db", summary="Clear the database", description="Clear all documents from ChromaDB and Elasticsearch (if enabled).")
 async def clear_database():
-    """Clear all documents from the database."""
+    """Clear all documents from both ChromaDB and Elasticsearch."""
     db_service = get_db_service()
     query_classifier_service = get_document_service().query_classifier
+    document_service = get_document_service()
     
     try:
-        # Get current document count for reporting
-        doc_count = db_service.get_document_count()
+        # Get current document count for reporting from ChromaDB
+        chroma_doc_count = db_service.get_document_count()
         
-        # Delete all documents
+        # Clear ChromaDB
         db_service.delete_all_documents()
+        result = {
+            "chroma": {
+                "status": "success",
+                "documents_removed": chroma_doc_count
+            }
+        }
+        
+        # Clear Elasticsearch if it's available
+        es_result = {"status": "not_available", "documents_removed": 0}
+        
+        # Check if Elasticsearch service exists in document_service
+        if hasattr(document_service, 'elasticsearch_service') and document_service.elasticsearch_service:
+            try:
+                # Get document count before clearing
+                es_doc_count = document_service.elasticsearch_service.get_document_count()
+                
+                # Delete all documents
+                document_service.elasticsearch_service.delete_all_documents()
+                
+                es_result = {
+                    "status": "success",
+                    "documents_removed": es_doc_count
+                }
+            except Exception as es_error:
+                es_result = {
+                    "status": "error",
+                    "error": str(es_error),
+                    "documents_removed": 0
+                }
+        
+        result["elasticsearch"] = es_result
         
         # Refresh the domain terms to reflect the empty database
         try:
             query_classifier_service.update_terms_from_db(db_service.collection)
+            result["terms_updated"] = True
         except Exception as e:
             print(f"Error refreshing domain terms after clearing DB: {e}")
+            result["terms_updated"] = False
+            result["terms_error"] = str(e)
+        
+        # Create a user-friendly message
+        total_docs = chroma_doc_count + es_result.get("documents_removed", 0)
+        message = f"Databases cleared successfully. Removed {total_docs} documents"
+        if es_result["status"] == "success":
+            message += f" ({chroma_doc_count} from ChromaDB, {es_result['documents_removed']} from Elasticsearch)."
+        elif es_result["status"] == "error":
+            message += f" from ChromaDB. Error clearing Elasticsearch: {es_result['error']}"
+        else:
+            message += " from ChromaDB. Elasticsearch not available."
         
         return {
             "status": "success",
-            "message": f"Database cleared successfully. Removed {doc_count} documents.",
-            "documents_removed": doc_count
+            "message": message,
+            "result": result
         }
     except Exception as e:
         return {
             "status": "error",
             "message": f"Error clearing database: {str(e)}"
+        }
+
+@router.delete("/document/{filename}", summary="Delete document", 
+             description="Delete a specific document and all its chunks from ChromaDB and Elasticsearch (if enabled).",
+             response_model=DeleteDocumentResponse)
+async def delete_document(filename: str):
+    """Delete a specific document and all its chunks."""
+    db_service = get_db_service()
+    query_classifier_service = get_document_service().query_classifier
+    document_service = get_document_service()
+    
+    try:
+        # Delete document chunks from ChromaDB
+        chroma_chunks_deleted = db_service.delete_document_by_filename(filename)
+        
+        # Initialize Elasticsearch result
+        es_chunks_deleted = None
+        
+        # Delete from Elasticsearch if it's available
+        if hasattr(document_service, 'elasticsearch_service') and document_service.elasticsearch_service:
+            try:
+                es_chunks_deleted = document_service.elasticsearch_service.delete_document_by_filename(filename)
+            except Exception as es_error:
+                # Log the error but continue with the operation
+                print(f"Error deleting from Elasticsearch: {es_error}")
+        
+        # Refresh domain terms if documents were deleted
+        if chroma_chunks_deleted > 0:
+            try:
+                query_classifier_service.update_terms_from_db(db_service.collection)
+            except Exception as e:
+                print(f"Error refreshing domain terms after document deletion: {e}")
+        
+        # Create user-friendly message
+        message = f"Document '{filename}' deleted successfully with {chroma_chunks_deleted} chunks from ChromaDB"
+        if es_chunks_deleted is not None:
+            message += f" and {es_chunks_deleted} chunks from Elasticsearch"
+        
+        return {
+            "status": "success",
+            "message": message,
+            "document": filename,
+            "chunks_deleted": chroma_chunks_deleted,
+            "es_chunks_deleted": es_chunks_deleted
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error deleting document: {str(e)}",
+            "document": filename,
+            "chunks_deleted": 0,
+            "es_chunks_deleted": None
         }
 
 @router.get("/chunks", summary="List document chunks", 
@@ -211,13 +329,26 @@ async def list_document_chunks(
             enrichment = metadata.get("enrichment", "")
             has_enrichment = metadata.get("has_enrichment", False)
             
+            # Get questions if they exist
+            has_questions = metadata.get("has_questions", False)
+            questions = []
+            if has_questions and "questions_json" in metadata:
+                try:
+                    import json
+                    questions_json = metadata.get("questions_json", "[]")
+                    questions = json.loads(questions_json)
+                except (json.JSONDecodeError, Exception) as e:
+                    print(f"Error parsing questions JSON for chunk {results['ids'][i]}: {e}")
+            
             chunks.append(ChunkInfo(
                 id=results["ids"][i],
                 text=original_text,
                 filename=file_name,
                 has_enrichment=has_enrichment,
                 enrichment=enrichment if has_enrichment else "",
-                embedding_dimension=embedding_dim
+                embedding_dimension=embedding_dim,
+                has_questions=has_questions,
+                questions=questions
             ))
         
         # Apply filters

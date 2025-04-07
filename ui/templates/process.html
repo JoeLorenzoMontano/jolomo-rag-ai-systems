@@ -71,6 +71,27 @@
                         </div>
                     </div>
                     
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">Question Generation</div>
+                        <div class="card-body">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="enable-questions" checked>
+                                <label class="form-check-label" for="enable-questions">Generate Questions for Chunks</label>
+                            </div>
+                            <div id="question-settings">
+                                <div class="mb-3">
+                                    <label for="max-questions" class="form-label">Maximum Questions per Chunk</label>
+                                    <input type="number" class="form-control" id="max-questions" value="5" min="1" max="10">
+                                    <div class="form-text">Maximum number of questions to generate for each chunk</div>
+                                </div>
+                            </div>
+                            <p class="text-muted small mb-0">
+                                When enabled, Ollama will generate potential questions that can be answered by each chunk.
+                                This helps match user queries directly to pre-generated Q&A pairs for improved response accuracy.
+                            </p>
+                        </div>
+                    </div>
+                    
                     <button type="submit" class="btn btn-primary" id="process-button">
                         <span id="process-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         Process Documents
@@ -121,9 +142,9 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <p class="mb-3">Clear all documents from the vector database. <strong>This action cannot be undone.</strong></p>
+                        <p class="mb-3">Clear all documents from the vector database (ChromaDB) and Elasticsearch (if enabled). <strong>This action cannot be undone.</strong></p>
                         <button type="button" class="btn btn-danger" id="clear-db-button" data-bs-toggle="modal" data-bs-target="#clearDbModal">
-                            <i class="bi bi-trash"></i> Clear Database
+                            <i class="bi bi-trash"></i> Clear All Databases
                         </button>
                     </div>
                 </div>
@@ -139,14 +160,14 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <p><strong>Warning:</strong> This will permanently delete all documents from the vector database. This action cannot be undone.</p>
+                        <p><strong>Warning:</strong> This will permanently delete all documents from both ChromaDB and Elasticsearch (if enabled). This action cannot be undone.</p>
                         <p>Are you sure you want to proceed?</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="button" class="btn btn-danger" id="confirm-clear-db">
                             <span id="clear-db-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                            Clear Database
+                            Clear All Databases
                         </button>
                     </div>
                 </div>
@@ -270,6 +291,8 @@
             // Elements - Form and Settings
             const enableChunkingSwitch = document.getElementById('enable-chunking');
             const chunkingSettings = document.getElementById('chunking-settings');
+            const enableQuestionsSwitch = document.getElementById('enable-questions');
+            const questionSettings = document.getElementById('question-settings');
             const processForm = document.getElementById('process-form');
             const processButton = document.getElementById('process-button');
             const processSpinner = document.getElementById('process-spinner');
@@ -310,6 +333,15 @@
                     chunkingSettings.classList.remove('d-none');
                 } else {
                     chunkingSettings.classList.add('d-none');
+                }
+            });
+            
+            // Toggle question generation settings visibility
+            enableQuestionsSwitch.addEventListener('change', () => {
+                if (enableQuestionsSwitch.checked) {
+                    questionSettings.classList.remove('d-none');
+                } else {
+                    questionSettings.classList.add('d-none');
                 }
             });
             
@@ -468,6 +500,20 @@
                             <h5>Semantic Enrichment</h5>
                             <div class="badge bg-${statusColor} mb-2">${enrichment.enabled ? 'Enabled' : 'Disabled'}</div>
                             <p class="mb-0">Chunks processed with enrichment: ${enrichment.chunks_processed}</p>
+                        </div>
+                    `;
+                }
+                
+                // Add question generation status if available
+                if (result.question_generation) {
+                    const questionGen = result.question_generation;
+                    const statusColor = questionGen.enabled ? 'success' : 'secondary';
+                    resultHtml += `
+                        <div class="mt-3">
+                            <h5>Question Generation</h5>
+                            <div class="badge bg-${statusColor} mb-2">${questionGen.enabled ? 'Enabled' : 'Disabled'}</div>
+                            <p class="mb-0">Chunks processed with questions: ${questionGen.chunks_processed}</p>
+                            <p class="mb-0">Max questions per chunk: ${questionGen.max_questions_per_chunk}</p>
                         </div>
                     `;
                 }
@@ -672,6 +718,24 @@
                 formData.append('file', file);
                 formData.append('process_immediately', processImmediately.checked);
                 
+                // Add chunking settings from main form
+                const enableChunking = enableChunkingSwitch.checked;
+                const chunkSize = document.getElementById('chunk-size').value;
+                const minSize = document.getElementById('min-size').value;
+                const overlap = document.getElementById('overlap').value;
+                const enableEnrichment = document.getElementById('enable-enrichment').checked;
+                const enableQuestions = enableQuestionsSwitch.checked;
+                const maxQuestions = document.getElementById('max-questions').value;
+                
+                // Add these settings to the form data
+                formData.append('enable_chunking', enableChunking);
+                formData.append('chunk_size', chunkSize);
+                formData.append('min_size', minSize);
+                formData.append('overlap', overlap);
+                formData.append('enhance_chunks', enableEnrichment);
+                formData.append('generate_questions', enableQuestions);
+                formData.append('max_questions_per_chunk', maxQuestions);
+                
                 try {
                     // Send request to upload file
                     const response = await fetch('/api/upload-file', {
@@ -744,7 +808,80 @@
                     if (data.status === 'error') {
                         resultContent.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
                     } else {
-                        resultContent.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                        // Create detailed result display
+                        let resultHtml = `<div class="alert alert-success">${data.message}</div>`;
+                        
+                        // Add detailed results if available
+                        if (data.result) {
+                            resultHtml += '<div class="mt-3">';
+                            
+                            // ChromaDB results
+                            if (data.result.chroma) {
+                                const chromaResult = data.result.chroma;
+                                resultHtml += `
+                                    <div class="card mb-3">
+                                        <div class="card-header bg-primary text-white">
+                                            ChromaDB Results
+                                        </div>
+                                        <div class="card-body">
+                                            <p><strong>Status:</strong> ${chromaResult.status}</p>
+                                            <p><strong>Documents Removed:</strong> ${chromaResult.documents_removed}</p>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                            
+                            // Elasticsearch results
+                            if (data.result.elasticsearch) {
+                                const esResult = data.result.elasticsearch;
+                                let headerClass = 'bg-primary';
+                                
+                                if (esResult.status === 'not_available') {
+                                    headerClass = 'bg-secondary';
+                                } else if (esResult.status === 'error') {
+                                    headerClass = 'bg-danger';
+                                }
+                                
+                                resultHtml += `
+                                    <div class="card mb-3">
+                                        <div class="card-header ${headerClass} text-white">
+                                            Elasticsearch Results
+                                        </div>
+                                        <div class="card-body">
+                                            <p><strong>Status:</strong> ${esResult.status}</p>
+                                            ${esResult.status === 'success' ? 
+                                                `<p><strong>Documents Removed:</strong> ${esResult.documents_removed}</p>` :
+                                                esResult.status === 'error' ? 
+                                                    `<p class="text-danger"><strong>Error:</strong> ${esResult.error}</p>` :
+                                                    `<p>Elasticsearch is not enabled or configured.</p>`
+                                            }
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                            
+                            // Terms update status
+                            if ('terms_updated' in data.result) {
+                                resultHtml += `
+                                    <div class="card mb-3">
+                                        <div class="card-header ${data.result.terms_updated ? 'bg-success' : 'bg-warning'} text-white">
+                                            Domain Terms Update
+                                        </div>
+                                        <div class="card-body">
+                                            <p><strong>Status:</strong> ${data.result.terms_updated ? 'Success' : 'Failed'}</p>
+                                            ${!data.result.terms_updated && data.result.terms_error ? 
+                                                `<p class="text-danger"><strong>Error:</strong> ${data.result.terms_error}</p>` : 
+                                                ''
+                                            }
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                            
+                            resultHtml += '</div>';
+                        }
+                        
+                        resultContent.innerHTML = resultHtml;
                         
                         // Refresh jobs list (should be empty now)
                         loadAllJobs();
@@ -778,6 +915,8 @@
                 const minSize = document.getElementById('min-size').value;
                 const overlap = document.getElementById('overlap').value;
                 const enableEnrichment = document.getElementById('enable-enrichment').checked;
+                const enableQuestions = enableQuestionsSwitch.checked;
+                const maxQuestions = document.getElementById('max-questions').value;
                 
                 // Create form data
                 const formData = new FormData();
@@ -786,6 +925,8 @@
                 formData.append('min_size', minSize);
                 formData.append('overlap', overlap);
                 formData.append('enhance_chunks', enableEnrichment);
+                formData.append('generate_questions', enableQuestions);
+                formData.append('max_questions_per_chunk', maxQuestions);
                 
                 try {
                     // Send request to start processing

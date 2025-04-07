@@ -5,6 +5,8 @@ This module handles query processing, document retrieval, and response generatio
 """
 
 import logging
+import json
+import re
 from typing import Dict, List, Any, Tuple, Optional, Union
 
 from utils.ollama_client import OllamaClient
@@ -55,7 +57,8 @@ class QueryService:
                      enhance_query: bool = True,
                      use_elasticsearch: Optional[bool] = None,
                      hybrid_search: bool = True,
-                     apply_reranking: bool = True) -> Dict[str, Any]:
+                     apply_reranking: bool = True,
+                     check_question_matches: bool = True) -> Dict[str, Any]:
         """
         Process a query and generate a response.
         
@@ -69,6 +72,8 @@ class QueryService:
             enhance_query: Whether to enhance the query for better retrieval (default: True)
             use_elasticsearch: Whether to use Elasticsearch (None for auto based on availability)
             hybrid_search: Whether to combine ChromaDB and Elasticsearch results for better retrieval
+            apply_reranking: Whether to apply reranking to retrieved results
+            check_question_matches: Whether to check for matches with pre-generated questions
             
         Returns:
             Dictionary with query response and sources
@@ -341,12 +346,39 @@ class QueryService:
             # Get the best matching document (first result)
             best_match = docs[0] if docs else ""
             
+            # Check for question matches if enabled
+            question_matches = []
+            exact_question_match = None
+            
+            if check_question_matches and docs and metadatas:
+                try:
+                    self.logger.info("Checking for matches with pre-generated questions")
+                    question_matches, exact_question_match = self._find_matching_questions(query, metadatas, docs)
+                    
+                    if exact_question_match:
+                        self.logger.info(f"Found exact question match: '{exact_question_match['question']}'")
+                    
+                    if question_matches:
+                        self.logger.info(f"Found {len(question_matches)} similar questions in the retrieved documents")
+                except Exception as e:
+                    self.logger.warning(f"Error during question matching: {e}")
+            
             # Generate a response based on the best match using Ollama
             context = best_match
+            context_source = "vector_search"
             
+            # If we have an exact question match, use the associated answer as context
+            if exact_question_match and 'answer' in exact_question_match:
+                context = exact_question_match['answer']
+                
+                # Add the chunk from which the question/answer came as additional context
+                if 'chunk_text' in exact_question_match and exact_question_match['chunk_text']:
+                    context = f"{context}\n\nAdditional context from document:\n{exact_question_match['chunk_text']}"
+                
+                context_source = "exact_question_match"
+                self.logger.info(f"Using exact question match answer as context")
             # If the context is too short and we have multiple results, add more context
-            # This improves answer quality by providing more information
-            if len(context.split()) < 100 and len(docs) > 1:
+            elif len(context.split()) < 100 and len(docs) > 1:
                 context = docs[0] + "\n\n" + docs[1]
             
             # Classify the query to determine if we should use web search
@@ -410,7 +442,8 @@ class QueryService:
                 "web_search_used": len(web_results) > 0,  # Only true if actual web results were found and used
                 "source_type": source_type,
                 "search_engine": search_engine,
-                "reranking_applied": reranked
+                "reranking_applied": reranked,
+                "context_source": context_source
             }
             
             # Add enhanced query information
@@ -418,6 +451,16 @@ class QueryService:
             if enhanced_query_text and enhanced_query_text != original_query:
                 response_data["enhanced_query"] = enhanced_query_text
                 response_data["query_enhanced"] = True
+                
+            # Add question matching information if applicable
+            if check_question_matches:
+                if exact_question_match:
+                    response_data["exact_question_match"] = exact_question_match
+                    response_data["used_question_match"] = True
+                elif question_matches:
+                    # Include top matches but limit the number returned
+                    response_data["question_matches"] = question_matches[:5]  # Limit to top 5
+                    response_data["used_question_match"] = False
             
             # Include classification details if requested
             if explain_classification and web_search is None:
@@ -454,7 +497,120 @@ class QueryService:
             error_response["sources"] = {"documents": [], "ids": [], "metadatas": []}
             
             return error_response
-
+            
+    def _find_matching_questions(self, user_query: str, metadatas: List[Dict[str, Any]], docs: List[str]) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """
+        Find pre-generated questions that match the user's query from the retrieved document metadata.
+        
+        Args:
+            user_query: The user's query string
+            metadatas: List of metadata dictionaries from retrieved documents
+            docs: List of document texts corresponding to the metadata
+            
+        Returns:
+            Tuple of (list_of_matching_questions, exact_match_if_found)
+        """
+        matching_questions = []
+        exact_match = None
+        
+        # Normalize user query for better matching (lowercase, strip punctuation)
+        normalized_query = user_query.lower().strip()
+        normalized_query = re.sub(r'[^\w\s]', '', normalized_query)
+        
+        # Check each document's metadata for pre-generated questions
+        for i, metadata in enumerate(metadatas):
+            # Skip if document has no questions
+            if not metadata.get("has_questions", False) or "questions_json" not in metadata:
+                continue
+                
+            # Get the questions from metadata (stored as JSON string)
+            try:
+                questions_json = metadata.get("questions_json", "[]")
+                questions = json.loads(questions_json)
+                if not questions:
+                    continue
+            except json.JSONDecodeError:
+                # If JSON parsing fails, skip this document
+                self.logger.warning(f"Error parsing questions JSON for document {metadata.get('chunk_id', '')}")
+                continue
+                
+            # Store the document text for context
+            doc_text = docs[i] if i < len(docs) else ""
+            
+            for qa_pair in questions:
+                if not isinstance(qa_pair, dict) or "question" not in qa_pair or "answer" not in qa_pair:
+                    continue
+                    
+                question = qa_pair["question"]
+                answer = qa_pair["answer"]
+                
+                # Skip empty questions/answers
+                if not question.strip() or not answer.strip():
+                    continue
+                    
+                # Normalize the pre-generated question
+                normalized_question = question.lower().strip()
+                normalized_question = re.sub(r'[^\w\s]', '', normalized_question)
+                
+                # Check for exact match
+                if normalized_query == normalized_question:
+                    exact_match = {
+                        "question": question,
+                        "answer": answer,
+                        "chunk_text": doc_text,
+                        "document_id": metadata.get("chunk_id", ""),
+                        "filename": metadata.get("filename", ""),
+                        "score": 1.0
+                    }
+                    # Don't break here - continue to collect all matches
+                
+                # Check for high similarity or contained questions
+                # Simple substring match
+                elif (normalized_query in normalized_question or 
+                      normalized_question in normalized_query or
+                      self._compute_token_similarity(normalized_query, normalized_question) > 0.7):
+                    
+                    # Compute similarity score
+                    similarity = self._compute_token_similarity(normalized_query, normalized_question)
+                    
+                    matching_questions.append({
+                        "question": question,
+                        "answer": answer,
+                        "chunk_text": doc_text,
+                        "document_id": metadata.get("chunk_id", ""),
+                        "filename": metadata.get("filename", ""),
+                        "score": similarity
+                    })
+        
+        # Sort matching questions by relevance score
+        matching_questions.sort(key=lambda x: x["score"], reverse=True)
+        
+        return matching_questions, exact_match
+    
+    def _compute_token_similarity(self, text1: str, text2: str) -> float:
+        """
+        Compute similarity between two text strings based on token overlap.
+        
+        Args:
+            text1: First text string
+            text2: Second text string
+            
+        Returns:
+            Similarity score between 0.0 and 1.0
+        """
+        # Split texts into word tokens
+        tokens1 = set(text1.split())
+        tokens2 = set(text2.split())
+        
+        # Compute Jaccard similarity
+        if not tokens1 or not tokens2:
+            return 0.0
+            
+        intersection = tokens1.intersection(tokens2)
+        union = tokens1.union(tokens2)
+        
+        return len(intersection) / len(union)
+    
     def _combine_chunks(self, 
                        docs: List[str], 
                        ids: List[str], 

@@ -103,6 +103,7 @@
                     </div>
                     <div>
                         <span class="badge enrichment-badge bg-success">Enhanced</span>
+                        <span class="badge questions-badge bg-info">Has Questions</span>
                         <span class="badge bg-light text-dark dimensions-badge">384 dim</span>
                     </div>
                 </div>
@@ -114,6 +115,10 @@
                     <div class="enrichment-container">
                         <h5>Semantic Enrichment</h5>
                         <pre class="chunk-enrichment language-markdown"><code></code></pre>
+                    </div>
+                    <div class="questions-container">
+                        <h5>Generated Questions</h5>
+                        <div class="questions-list"></div>
                     </div>
                 </div>
             </div>
@@ -232,6 +237,36 @@
                     } else {
                         enrichmentBadge.classList.add('d-none');
                         enrichmentContainer.classList.add('d-none');
+                    }
+                    
+                    // Set questions badge and content
+                    const questionsBadge = chunkCard.querySelector('.questions-badge');
+                    const questionsContainer = chunkCard.querySelector('.questions-container');
+                    const questionsList = chunkCard.querySelector('.questions-list');
+                    
+                    if (chunk.has_questions && chunk.questions && chunk.questions.length > 0) {
+                        questionsBadge.classList.remove('d-none');
+                        questionsContainer.classList.remove('d-none');
+                        questionsBadge.textContent = `${chunk.questions.length} Questions`;
+                        
+                        // Create questions list
+                        questionsList.innerHTML = '';
+                        chunk.questions.forEach((qa, idx) => {
+                            const qaCard = document.createElement('div');
+                            qaCard.className = 'card mb-2';
+                            qaCard.innerHTML = `
+                                <div class="card-header bg-light">
+                                    <strong>Q${idx+1}:</strong> ${qa.question}
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>A:</strong> ${qa.answer}</p>
+                                </div>
+                            `;
+                            questionsList.appendChild(qaCard);
+                        });
+                    } else {
+                        questionsBadge.classList.add('d-none');
+                        questionsContainer.classList.add('d-none');
                     }
                     
                     // Set dimensions badge
