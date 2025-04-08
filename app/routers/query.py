@@ -126,34 +126,42 @@ async def chat_query(
     query_service = get_query_service()
     settings = get_settings()
     
-    # IMMEDIATELY check if this is an OpenAI assistant with local docs disabled
-    # In this case we can skip the entire RAG pipeline
-    if (chat_request.use_openai and 
-        chat_request.model == 'assistant' and 
-        chat_request.assistant_id and 
-        not chat_request.use_local_docs and
-        settings.get("openai_api_key")):
+    # Common validation for all paths
+    if not chat_request.messages or len(chat_request.messages) == 0:
+        return {
+            "status": "error",
+            "response": "No messages provided in the request.",
+            "sources": {"documents": [], "ids": [], "metadatas": []}
+        }
         
+    # Extract the latest user message to use as query
+    latest_message = None
+    for msg in reversed(chat_request.messages):
+        if msg.role == "user":
+            latest_message = msg.content
+            break
+            
+    if not latest_message:
+        return {
+            "status": "error",
+            "response": "No user message found in the conversation history.",
+            "sources": {"documents": [], "ids": [], "metadatas": []}
+        }
+    
+    # FAST PATH: For OpenAI assistants with local docs disabled
+    is_openai_assistant = (chat_request.use_openai and 
+                          chat_request.model == 'assistant' and 
+                          chat_request.assistant_id)
+    
+    # Check if we should use the fast path - completely bypass RAG
+    if is_openai_assistant and not chat_request.use_local_docs and settings.get("openai_api_key"):
         logging.info(f"FAST PATH: Using OpenAI Assistant without local document retrieval")
-        
-        # Extract the latest user message to use as query
-        latest_message = None
-        for msg in reversed(chat_request.messages):
-            if msg.role == "user":
-                latest_message = msg.content
-                break
-                
-        if not latest_message:
-            return {
-                "status": "error",
-                "response": "No user message found in the conversation history.",
-                "sources": {"documents": [], "ids": [], "metadatas": []}
-            }
         
         # Initialize with empty context and sources
         rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": False}
         
-        # Only do web search if specifically requested 
+        # Only do web search if specifically requested
+        web_results = None
         if chat_request.web_search:
             logging.info(f"Performing web search only for OpenAI Assistant")
             try:
@@ -171,7 +179,6 @@ async def chat_query(
             import openai
             openai.api_key = settings.get("openai_api_key")
             
-            # Use the Assistants API
             # Create a thread
             thread = openai.beta.threads.create()
             
@@ -185,8 +192,7 @@ async def chat_query(
                     )
             
             # Add web search results if available
-            if chat_request.web_search and rag_result["web_search_used"] and rag_result["sources"]["web_results"]:
-                web_results = rag_result["sources"]["web_results"]
+            if web_results:
                 web_results_text = WebSearchClient().format_results_as_context(web_results)
                 web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
                 openai.beta.threads.messages.create(
@@ -195,20 +201,20 @@ async def chat_query(
                     content=web_context_msg
                 )
             
-            # Run the assistant on the thread
+            # Run the assistant
             run = openai.beta.threads.runs.create(
                 thread_id=thread.id,
                 assistant_id=chat_request.assistant_id
             )
             
-            # Poll for completion - in a real app, you'd use a webhook
+            # Poll for completion
             import time
             run_status = run.status
             max_attempts = 30  # 30 seconds max wait time
             attempts = 0
             
             while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
-                time.sleep(1)  # Wait for 1 second
+                time.sleep(1)
                 run = openai.beta.threads.runs.retrieve(
                     thread_id=thread.id,
                     run_id=run.id
@@ -253,64 +259,34 @@ async def chat_query(
             }
             return error_response
     
-    # Standard path for all other cases
+    # STANDARD PATH: For all other cases
     try:
-        # Get the latest user message (should be the last message in the list)
-        if not chat_request.messages or len(chat_request.messages) == 0:
-            return {
-                "status": "error",
-                "response": "No messages provided in the request.",
-                "sources": {"documents": [], "ids": [], "metadatas": []}
-            }
-            
-        # Extract the latest user message to use as query
-        latest_message = None
-        for msg in reversed(chat_request.messages):
-            if msg.role == "user":
-                latest_message = msg.content
-                break
-                
-        if not latest_message:
-            return {
-                "status": "error",
-                "response": "No user message found in the conversation history.",
-                "sources": {"documents": [], "ids": [], "metadatas": []}
-            }
+        # Process RAG based on conditions
+        context = ""
+        rag_result = {
+            "status": "success", 
+            "sources": {"documents": [], "ids": [], "metadatas": []}, 
+            "web_search_used": chat_request.web_search or False
+        }
         
-        # Handle different model options
-        if chat_request.use_openai and settings.get("openai_api_key"):
-            # Use OpenAI API for chat completion
-            if chat_request.model == 'assistant' and chat_request.assistant_id:
-                logging.info(f"Using OpenAI Assistant: {chat_request.assistant_id}")
-            else:
-                logging.info(f"Using OpenAI model: {chat_request.model}")
-                
-            # Initialize with empty context and sources
-            context = ""
-            rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": chat_request.web_search or False}
-            
-            # For OpenAI assistants with local docs disabled, skip ALL document retrieval/RAG processing
-            if chat_request.model == 'assistant' and chat_request.assistant_id and not chat_request.use_local_docs:
-                logging.info(f"Using OpenAI Assistant without local document retrieval - skipping all RAG processing")
-                # Only do web search if specifically requested
-                if chat_request.web_search:
-                    logging.info(f"Performing web search only for OpenAI Assistant")
-                    ollama_client = get_ollama_client()
-                    try:
-                        from utils.web_search import WebSearchClient
-                        web_search_client = WebSearchClient()
-                        web_results = web_search_client.search_with_serper(latest_message, num_results=chat_request.web_results_count)
-                        if web_results:
-                            rag_result["sources"]["web_results"] = web_results
-                            rag_result["web_search_used"] = True
-                    except Exception as e:
-                        logging.error(f"Error during web search for OpenAI Assistant: {e}")
-                        rag_result["web_search_used"] = False
-            # Only perform full RAG if local docs are enabled
-            elif chat_request.use_local_docs:
-                # Do a regular query to get relevant documents (using Ollama for embeddings)
-                ollama_client = get_ollama_client()
-                
+        # Get or create appropriate Ollama client
+        ollama_client = get_ollama_client()
+        if chat_request.model and not is_openai_assistant:
+            try:
+                # Create a temporary client with the specified model
+                ollama_client = OllamaClient(
+                    model=chat_request.model,
+                    embedding_model=ollama_client.embedding_model,
+                    base_url=ollama_client.base_url
+                )
+            except Exception as e:
+                logging.error(f"Error creating custom Ollama client: {e}")
+                # Continue with default client
+        
+        # Handle document retrieval based on settings
+        if chat_request.use_local_docs:
+            # Do full RAG query with document retrieval
+            try:
                 rag_result = query_service.process_query(
                     query=latest_message,
                     n_results=chat_request.n_results,
@@ -325,9 +301,17 @@ async def chat_query(
                     check_question_matches=chat_request.check_question_matches,
                     custom_ollama_client=ollama_client
                 )
-            elif chat_request.web_search:
-                # Only do web search if local docs are disabled but web search is enabled
-                ollama_client = get_ollama_client()
+            except Exception as e:
+                logging.error(f"Error during RAG query: {e}")
+                rag_result = {
+                    "status": "success",
+                    "sources": {"documents": [], "ids": [], "metadatas": []},
+                    "source_type": "documents",
+                    "web_search_used": False
+                }
+        elif chat_request.web_search:
+            # Web search only with no document retrieval
+            try:
                 rag_result = query_service.process_query(
                     query=latest_message,
                     n_results=0,
@@ -342,117 +326,135 @@ async def chat_query(
                     check_question_matches=False,
                     custom_ollama_client=ollama_client
                 )
+            except Exception as e:
+                logging.error(f"Error during web search: {e}")
+                rag_result = {
+                    "status": "success",
+                    "sources": {"documents": [], "ids": [], "metadatas": []},
+                    "source_type": "web",
+                    "web_search_used": False
+                }
+        else:
+            # No document retrieval, no web search
+            logging.info("Skipping all document retrieval as requested")
+        
+        # Check if RAG result indicates an error
+        if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
+            return rag_result
             
-            # Check if we got a valid result
-            if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
-                return rag_result
+        # Process any retrieved documents as context
+        if rag_result.get("sources") and rag_result.get("sources").get("documents"):
+            documents = rag_result.get("sources").get("documents")
+            if documents:
+                context = "\n\n".join(documents)
+        
+        # OPENAI API PATH
+        if chat_request.use_openai and settings.get("openai_api_key"):
+            import openai
+            openai.api_key = settings.get("openai_api_key")
             
-            # Get the context from the RAG result - skip for OpenAI assistants without local docs
-            context = ""
-            # Only use context for non-assistant models or when local docs are enabled
-            if not (chat_request.model == 'assistant' and chat_request.assistant_id and not chat_request.use_local_docs):
-                if rag_result.get("sources") and rag_result.get("sources").get("documents"):
-                    documents = rag_result.get("sources").get("documents")
-                    if documents:
-                        # Combine all retrieved documents as context
-                        context = "\n\n".join(documents)
-            
-            # Format the OpenAI messages
-            openai_messages = []
-            
-            # Add system message with context
-            if context:
-                system_message = f"You are a helpful assistant. Answer the user's questions based on the following information:\n\n{context}\n\nIf the information provided doesn't answer the question, say so clearly."
-                openai_messages.append({"role": "system", "content": system_message})
-            else:
-                openai_messages.append({"role": "system", "content": "You are a helpful assistant."})
-            
-            # Add the conversation history
-            for msg in chat_request.messages:
-                openai_messages.append({"role": msg.role, "content": msg.content})
-                
-            # Call OpenAI API
-            try:
-                import openai
-                openai.api_key = settings.get("openai_api_key")
-                
-                # Handle Assistants API vs Chat Completion API
-                if chat_request.model == 'assistant' and chat_request.assistant_id:
-                    # Use the Assistants API
-                    try:
-                        # Create a thread
-                        thread = openai.beta.threads.create()
-                        
-                        # Add user messages to the thread
-                        for msg in chat_request.messages:
-                            if msg.role == "user":
-                                openai.beta.threads.messages.create(
-                                    thread_id=thread.id,
-                                    role="user",
-                                    content=msg.content
-                                )
-                        
-                        # Add context as a user message if available and if using local docs
-                        if context and chat_request.use_local_docs:
-                            context_msg = f"Here's some relevant information that might help answer my question:\n\n{context}"
+            if is_openai_assistant:
+                # OpenAI Assistant API
+                try:
+                    # Create a thread
+                    thread = openai.beta.threads.create()
+                    
+                    # Add user messages to the thread
+                    for msg in chat_request.messages:
+                        if msg.role == "user":
                             openai.beta.threads.messages.create(
                                 thread_id=thread.id,
                                 role="user",
-                                content=context_msg
+                                content=msg.content
                             )
-                        
-                        # Run the assistant on the thread
-                        run = openai.beta.threads.runs.create(
+                    
+                    # Add context as a user message if available
+                    if context:
+                        context_msg = f"Here's some relevant information that might help answer my question:\n\n{context}"
+                        openai.beta.threads.messages.create(
                             thread_id=thread.id,
-                            assistant_id=chat_request.assistant_id
+                            role="user",
+                            content=context_msg
                         )
-                        
-                        # Poll for completion - in a real app, you'd use a webhook
-                        import time
+                    
+                    # Add web search results if available
+                    if rag_result.get("web_search_used") and rag_result.get("sources", {}).get("web_results"):
+                        web_results = rag_result["sources"]["web_results"]
+                        web_results_text = WebSearchClient().format_results_as_context(web_results)
+                        web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
+                        openai.beta.threads.messages.create(
+                            thread_id=thread.id,
+                            role="user",
+                            content=web_context_msg
+                        )
+                    
+                    # Run the assistant on the thread
+                    run = openai.beta.threads.runs.create(
+                        thread_id=thread.id,
+                        assistant_id=chat_request.assistant_id
+                    )
+                    
+                    # Poll for completion
+                    import time
+                    run_status = run.status
+                    max_attempts = 30
+                    attempts = 0
+                    
+                    while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
+                        time.sleep(1)
+                        run = openai.beta.threads.runs.retrieve(
+                            thread_id=thread.id,
+                            run_id=run.id
+                        )
                         run_status = run.status
-                        max_attempts = 30  # 30 seconds max wait time
-                        attempts = 0
+                        attempts += 1
+                    
+                    # Get assistant's response
+                    messages = openai.beta.threads.messages.list(
+                        thread_id=thread.id
+                    )
+                    
+                    assistant_messages = [msg for msg in messages.data if msg.role == "assistant"]
+                    if assistant_messages:
+                        latest_message = assistant_messages[0]
+                        response_content = latest_message.content[0].text.value
+                    else:
+                        response_content = "The assistant did not provide a response."
                         
-                        while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
-                            time.sleep(1)  # Wait for 1 second
-                            run = openai.beta.threads.runs.retrieve(
-                                thread_id=thread.id,
-                                run_id=run.id
-                            )
-                            run_status = run.status
-                            attempts += 1
-                        
-                        # Get the assistant's messages
-                        messages = openai.beta.threads.messages.list(
-                            thread_id=thread.id
-                        )
-                        
-                        # Get the last assistant message
-                        assistant_messages = [msg for msg in messages.data if msg.role == "assistant"]
-                        if assistant_messages:
-                            latest_message = assistant_messages[0]
-                            response_content = latest_message.content[0].text.value
-                        else:
-                            response_content = "The assistant did not provide a response."
-                            
-                        # Format response
-                        response = {
-                            "status": "success",
-                            "response": response_content,
-                            "model_used": "assistant",
-                            "provider": "openai",
-                            "assistant_id": chat_request.assistant_id
-                        }
-                    except Exception as e:
-                        logging.error(f"Error using OpenAI Assistant: {e}")
-                        response = {
-                            "status": "error",
-                            "response": f"Error using OpenAI Assistant: {str(e)}",
-                            "model_used": "assistant",
-                            "provider": "openai"
-                        }
-                else:
-                    # Use the Chat Completion API
+                    # Format response
+                    response = {
+                        "status": "success",
+                        "response": response_content,
+                        "model_used": "assistant",
+                        "provider": "openai",
+                        "assistant_id": chat_request.assistant_id
+                    }
+                except Exception as e:
+                    logging.error(f"Error using OpenAI Assistant: {e}")
+                    response = {
+                        "status": "error",
+                        "response": f"Error using OpenAI Assistant: {str(e)}",
+                        "model_used": "assistant",
+                        "provider": "openai"
+                    }
+            else:
+                # OpenAI Chat Completion API
+                try:
+                    # Format messages
+                    openai_messages = []
+                    
+                    # Add system message with context
+                    if context:
+                        system_message = f"You are a helpful assistant. Answer the user's questions based on the following information:\n\n{context}\n\nIf the information provided doesn't answer the question, say so clearly."
+                        openai_messages.append({"role": "system", "content": system_message})
+                    else:
+                        openai_messages.append({"role": "system", "content": "You are a helpful assistant."})
+                    
+                    # Add the conversation history
+                    for msg in chat_request.messages:
+                        openai_messages.append({"role": msg.role, "content": msg.content})
+                    
+                    # Call the API
                     model_name = chat_request.model if chat_request.model else "gpt-3.5-turbo"
                     openai_response = openai.chat.completions.create(
                         model=model_name,
@@ -470,157 +472,42 @@ async def chat_query(
                         "model_used": model_name,
                         "provider": "openai"
                     }
-                
-            except Exception as e:
-                logging.error(f"Error with OpenAI API: {e}")
-                response = {
-                    "status": "error",
-                    "response": f"Error with OpenAI API: {str(e)}",
-                    "model_used": chat_request.model,
-                    "provider": "openai"
-                }
+                except Exception as e:
+                    logging.error(f"Error with OpenAI Chat API: {e}")
+                    response = {
+                        "status": "error",
+                        "response": f"Error with OpenAI API: {str(e)}",
+                        "model_used": chat_request.model,
+                        "provider": "openai"
+                    }
         else:
-            # Use Ollama for chat completion
-            logging.info(f"Using Ollama model: {chat_request.model or 'default'}")
-            
-            # Get the Ollama client
-            ollama_client = get_ollama_client()
-            
-            # If custom models are specified, use them
-            if chat_request.model:
-                try:
-                    # Create a temporary client with the specified models
-                    ollama_client = OllamaClient(
-                        model=chat_request.model,
-                        embedding_model=ollama_client.embedding_model,
-                        base_url=ollama_client.base_url
-                    )
-                except Exception as e:
-                    logging.error(f"Error creating custom Ollama client: {e}")
-                    # Continue with default client
-            
-            # Initialize rag_result with default empty values
-            rag_result = {
-                "status": "success",
-                "sources": {"documents": [], "ids": [], "metadatas": []},
-                "source_type": "none",
-                "web_search_used": chat_request.web_search or False
-            }
-            
-            # For OpenAI assistants with local docs disabled, skip ALL document retrieval/RAG processing
-            if chat_request.model == 'assistant' and chat_request.assistant_id and not chat_request.use_local_docs:
-                logging.info(f"Using Ollama with OpenAI Assistant without local document retrieval - skipping all RAG processing")
-                # Only do web search if specifically requested
-                if chat_request.web_search:
-                    logging.info(f"Performing web search only for OpenAI Assistant")
-                    try:
-                        from utils.web_search import WebSearchClient
-                        web_search_client = WebSearchClient()
-                        web_results = web_search_client.search_with_serper(latest_message, num_results=chat_request.web_results_count)
-                        if web_results:
-                            rag_result["sources"]["web_results"] = web_results
-                            rag_result["web_search_used"] = True
-                    except Exception as e:
-                        logging.error(f"Error during web search for OpenAI Assistant: {e}")
-                        rag_result["web_search_used"] = False
-            # First, decide whether to perform document retrieval
-            elif chat_request.use_local_docs:
-                try:
-                    # Do a regular query to get relevant documents
-                    rag_result = query_service.process_query(
-                        query=latest_message,
-                        n_results=chat_request.n_results,
-                        combine_chunks=chat_request.combine_chunks,
-                        web_search=chat_request.web_search,
-                        web_results_count=chat_request.web_results_count,
-                        explain_classification=False,  # Always false for chat
-                        enhance_query=chat_request.enhance_query,
-                        use_elasticsearch=chat_request.use_elasticsearch,
-                        hybrid_search=chat_request.hybrid_search,
-                        apply_reranking=chat_request.apply_reranking,
-                        check_question_matches=chat_request.check_question_matches,
-                        custom_ollama_client=ollama_client
-                    )
-                except Exception as e:
-                    logging.error(f"Error during RAG query: {e}")
-                    rag_result = {
-                        "status": "success",
-                        "sources": {"documents": [], "ids": [], "metadatas": []},
-                        "source_type": "documents"
-                    }
-            elif chat_request.web_search:
-                # Only do web search if local docs are disabled but web search is enabled
-                try:
-                    rag_result = query_service.process_query(
-                        query=latest_message,
-                        n_results=0,
-                        combine_chunks=False,
-                        web_search=True,
-                        web_results_count=chat_request.web_results_count,
-                        explain_classification=False,
-                        enhance_query=chat_request.enhance_query,
-                        use_elasticsearch=False,
-                        hybrid_search=False,
-                        apply_reranking=False,
-                        check_question_matches=False,
-                        custom_ollama_client=ollama_client
-                    )
-                except Exception as e:
-                    logging.error(f"Error during web search: {e}")
-                    rag_result = {
-                        "status": "success",
-                        "sources": {"documents": [], "ids": [], "metadatas": []},
-                        "source_type": "web",
-                        "web_search_used": False
-                    }
-            else:
-                # Skip all document retrieval
-                logging.info("Skipping all document retrieval as requested")
-            
-            # Check if we got a valid result
-            if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
-                return rag_result
-                
-            # Convert messages to the format expected by the Ollama API
-            ollama_messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
-            
-            # Get the context from the RAG result
-            context = None
-            if rag_result.get("sources") and rag_result.get("sources").get("documents"):
-                documents = rag_result.get("sources").get("documents")
-                if documents:
-                    # Combine all retrieved documents as context
-                    context = "\n\n".join(documents)
-            
+            # OLLAMA PATH
             try:
+                # Convert messages to the format expected by the Ollama API
+                ollama_messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
+                
                 # Generate a chat response with the context
                 response = query_service.process_chat(
                     messages=ollama_messages,
                     context=context,
                     custom_ollama_client=ollama_client
                 )
+                response["provider"] = "ollama"
             except Exception as e:
                 logging.error(f"Error during chat response generation: {e}")
-                # Default error response if chat processing fails
                 response = {
                     "status": "error",
                     "response": f"An error occurred during chat processing: {str(e)}",
-                    "error": str(e)
+                    "error": str(e),
+                    "provider": "ollama"
                 }
-            response["provider"] = "ollama"
         
-        # Add the sources from the RAG query to the chat response
-        # If local docs are disabled, ensure we don't include any sources
-        if not chat_request.use_local_docs:
-            response["sources"] = {"documents": [], "ids": [], "metadatas": []}
-        else:
-            response["sources"] = rag_result.get("sources", {"documents": [], "ids": [], "metadatas": []})
+        # Add sources and metadata to the response
+        response["sources"] = rag_result.get("sources", {"documents": [], "ids": [], "metadatas": []}) if chat_request.use_local_docs else {"documents": [], "ids": [], "metadatas": []}
         
-        # Add the source_type if available
         if "source_type" in rag_result:
             response["source_type"] = rag_result["source_type"]
             
-        # Add web_search_used if available
         if "web_search_used" in rag_result:
             response["web_search_used"] = rag_result["web_search_used"]
         
@@ -628,7 +515,7 @@ async def chat_query(
         
     except Exception as e:
         # Log the error
-        print(f"Error in chat_query: {e}")
+        logging.error(f"Error in chat_query: {e}")
         
         # Return a helpful error response
         error_response = {
