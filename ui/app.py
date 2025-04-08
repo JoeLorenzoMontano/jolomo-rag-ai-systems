@@ -188,6 +188,7 @@ def chat_query():
         # Get model parameters
         model = data.get('model')
         use_openai = data.get('use_openai', False)
+        assistant_id = data.get('assistant_id')  # Get assistant ID if provided
         
         # Call the chat API
         response = requests.post(
@@ -204,7 +205,8 @@ def chat_query():
                 'apply_reranking': apply_reranking,
                 'check_question_matches': check_question_matches,
                 'model': model,
-                'use_openai': use_openai
+                'use_openai': use_openai,
+                'assistant_id': assistant_id
             },
             timeout=None
         )

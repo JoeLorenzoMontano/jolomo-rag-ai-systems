@@ -152,8 +152,11 @@ async def chat_query(
         # Handle different model options
         if chat_request.use_openai and settings.get("openai_api_key"):
             # Use OpenAI API for chat completion
-            logging.info(f"Using OpenAI model: {chat_request.model}")
-            
+            if chat_request.model == 'assistant' and chat_request.assistant_id:
+                logging.info(f"Using OpenAI Assistant: {chat_request.assistant_id}")
+            else:
+                logging.info(f"Using OpenAI model: {chat_request.model}")
+                
             # First, do a regular query to get relevant documents (using Ollama for embeddings)
             ollama_client = get_ollama_client()
             
@@ -203,23 +206,100 @@ async def chat_query(
                 import openai
                 openai.api_key = settings.get("openai_api_key")
                 
-                model_name = chat_request.model if chat_request.model else "gpt-3.5-turbo"
-                openai_response = openai.chat.completions.create(
-                    model=model_name,
-                    messages=openai_messages,
-                    temperature=0.7,
-                    max_tokens=1000
-                )
-                
-                response_content = openai_response.choices[0].message.content
-                
-                # Format response
-                response = {
-                    "status": "success",
-                    "response": response_content,
-                    "model_used": model_name,
-                    "provider": "openai"
-                }
+                # Handle Assistants API vs Chat Completion API
+                if chat_request.model == 'assistant' and chat_request.assistant_id:
+                    # Use the Assistants API
+                    try:
+                        # Create a thread
+                        thread = openai.beta.threads.create()
+                        
+                        # Add user messages to the thread
+                        for msg in chat_request.messages:
+                            if msg.role == "user":
+                                openai.beta.threads.messages.create(
+                                    thread_id=thread.id,
+                                    role="user",
+                                    content=msg.content
+                                )
+                        
+                        # Add context as a user message if available
+                        if context:
+                            context_msg = f"Here's some relevant information that might help answer my question:\n\n{context}"
+                            openai.beta.threads.messages.create(
+                                thread_id=thread.id,
+                                role="user",
+                                content=context_msg
+                            )
+                        
+                        # Run the assistant on the thread
+                        run = openai.beta.threads.runs.create(
+                            thread_id=thread.id,
+                            assistant_id=chat_request.assistant_id
+                        )
+                        
+                        # Poll for completion - in a real app, you'd use a webhook
+                        import time
+                        run_status = run.status
+                        max_attempts = 30  # 30 seconds max wait time
+                        attempts = 0
+                        
+                        while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
+                            time.sleep(1)  # Wait for 1 second
+                            run = openai.beta.threads.runs.retrieve(
+                                thread_id=thread.id,
+                                run_id=run.id
+                            )
+                            run_status = run.status
+                            attempts += 1
+                        
+                        # Get the assistant's messages
+                        messages = openai.beta.threads.messages.list(
+                            thread_id=thread.id
+                        )
+                        
+                        # Get the last assistant message
+                        assistant_messages = [msg for msg in messages.data if msg.role == "assistant"]
+                        if assistant_messages:
+                            latest_message = assistant_messages[0]
+                            response_content = latest_message.content[0].text.value
+                        else:
+                            response_content = "The assistant did not provide a response."
+                            
+                        # Format response
+                        response = {
+                            "status": "success",
+                            "response": response_content,
+                            "model_used": "assistant",
+                            "provider": "openai",
+                            "assistant_id": chat_request.assistant_id
+                        }
+                    except Exception as e:
+                        logging.error(f"Error using OpenAI Assistant: {e}")
+                        response = {
+                            "status": "error",
+                            "response": f"Error using OpenAI Assistant: {str(e)}",
+                            "model_used": "assistant",
+                            "provider": "openai"
+                        }
+                else:
+                    # Use the Chat Completion API
+                    model_name = chat_request.model if chat_request.model else "gpt-3.5-turbo"
+                    openai_response = openai.chat.completions.create(
+                        model=model_name,
+                        messages=openai_messages,
+                        temperature=0.7,
+                        max_tokens=1000
+                    )
+                    
+                    response_content = openai_response.choices[0].message.content
+                    
+                    # Format response
+                    response = {
+                        "status": "success",
+                        "response": response_content,
+                        "model_used": model_name,
+                        "provider": "openai"
+                    }
                 
             except Exception as e:
                 logging.error(f"Error with OpenAI API: {e}")

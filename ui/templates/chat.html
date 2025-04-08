@@ -121,7 +121,7 @@
                         <option value="default" selected>Default (Ollama)</option>
                         <option value="openai_gpt4">OpenAI GPT-4</option>
                         <option value="openai_gpt35">OpenAI GPT-3.5</option>
-                        <option value="openai_assistant" disabled>OpenAI Assistant (soon)</option>
+                        <!-- Assistant options will be dynamically added here -->
                     </select>
                 </div>
                 <button id="clear-chat" class="btn btn-outline-secondary btn-sm me-2">
@@ -174,6 +174,38 @@
                     content: 'Hello! I\'m your RAG-powered assistant. Ask me anything about the documents that have been indexed.'
                 }
             ];
+            
+            // Load available assistant IDs from the server
+            async function loadAssistantOptions() {
+                try {
+                    const response = await fetch('/api/settings');
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.settings && data.settings.openai_assistant_ids) {
+                        const assistantIds = data.settings.openai_assistant_ids;
+                        if (assistantIds && assistantIds.length > 0) {
+                            // Add a divider
+                            const divider = document.createElement('option');
+                            divider.disabled = true;
+                            divider.textContent = '───── Assistants ─────';
+                            modelSelector.appendChild(divider);
+                            
+                            // Add an option for each assistant ID
+                            assistantIds.forEach((assistantId, index) => {
+                                const option = document.createElement('option');
+                                option.value = `assistant_${assistantId}`;
+                                option.textContent = `Assistant ${index + 1} (${assistantId.substring(0, 8)}...)`;
+                                modelSelector.appendChild(option);
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading assistant options:', error);
+                }
+            }
+            
+            // Load assistant options when the page loads
+            loadAssistantOptions();
             
             // Auto-resize textarea as user types
             chatInput.addEventListener('input', function() {
@@ -230,23 +262,27 @@
                     // Determine model parameters based on selection
                     let queryModel = null;
                     let useOpenAI = false;
+                    let assistantId = null;
                     
-                    switch(selectedModel) {
-                        case 'openai_gpt4':
-                            useOpenAI = true;
-                            queryModel = 'gpt-4';
-                            break;
-                        case 'openai_gpt35':
-                            useOpenAI = true;
-                            queryModel = 'gpt-3.5-turbo';
-                            break;
-                        case 'openai_assistant':
-                            useOpenAI = true;
-                            queryModel = 'assistant';
-                            break;
-                        default:
-                            // Use default Ollama model
-                            queryModel = null;
+                    if (selectedModel.startsWith('assistant_')) {
+                        // This is an assistant ID
+                        useOpenAI = true;
+                        queryModel = 'assistant';
+                        assistantId = selectedModel.substring('assistant_'.length);
+                    } else {
+                        switch(selectedModel) {
+                            case 'openai_gpt4':
+                                useOpenAI = true;
+                                queryModel = 'gpt-4';
+                                break;
+                            case 'openai_gpt35':
+                                useOpenAI = true;
+                                queryModel = 'gpt-3.5-turbo';
+                                break;
+                            default:
+                                // Use default Ollama model
+                                queryModel = null;
+                        }
                     }
                     
                     // Call the API with full conversation history
@@ -267,7 +303,8 @@
                             apply_reranking: true, // Enable reranking for better results
                             check_question_matches: true, // Enable question matching feature
                             model: queryModel,
-                            use_openai: useOpenAI
+                            use_openai: useOpenAI,
+                            assistant_id: assistantId // Pass the assistant ID if one was selected
                         })
                     });
                     

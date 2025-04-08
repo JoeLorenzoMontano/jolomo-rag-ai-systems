@@ -95,3 +95,4 @@ class ChatRequest(BaseModel):
     check_question_matches: bool = Field(True, description="Whether to check for question matches")
     model: Optional[str] = Field(None, description="Model to use for generating the response")
     use_openai: bool = Field(False, description="Whether to use OpenAI instead of Ollama")
+    assistant_id: Optional[str] = Field(None, description="Specific OpenAI assistant ID to use")
