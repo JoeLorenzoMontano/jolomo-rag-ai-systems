@@ -189,6 +189,7 @@ def chat_query():
         model = data.get('model')
         use_openai = data.get('use_openai', False)
         assistant_id = data.get('assistant_id')  # Get assistant ID if provided
+        use_local_docs = data.get('use_local_docs', True)  # Get the local docs setting (default to True)
         
         # Call the chat API
         response = requests.post(
@@ -206,7 +207,8 @@ def chat_query():
                 'check_question_matches': check_question_matches,
                 'model': model,
                 'use_openai': use_openai,
-                'assistant_id': assistant_id
+                'assistant_id': assistant_id,
+                'use_local_docs': use_local_docs  # Pass the local docs setting to the API
             },
             timeout=None
         )
