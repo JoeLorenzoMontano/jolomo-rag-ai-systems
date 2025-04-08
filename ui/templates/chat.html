@@ -185,6 +185,16 @@
                 }
             ];
             
+            // Handle model selection changes
+            modelSelector.addEventListener('change', function() {
+                const selectedModel = modelSelector.value;
+                
+                // If this is an OpenAI assistant, automatically disable local docs
+                if (selectedModel.startsWith('assistant_')) {
+                    localDocsToggle.checked = false;
+                }
+            });
+            
             // Load available assistant IDs from the server
             async function loadAssistantOptions() {
                 try {
