@@ -1,19 +1,49 @@
-FROM python:3.11
+# Build stage
+FROM python:3.11-slim AS builder
 
-# Set the working directory inside the container
+# Set working directory
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY requirements.txt .
+
+# Create a virtual environment and install dependencies
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Final stage
+FROM python:3.11-slim
+
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies needed for the startup script
-RUN apt-get update && apt-get install -y curl iputils-ping && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies only
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file to the container
-COPY requirements.txt ./
+# Copy virtual environment from builder stage
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
 
-# Install dependencies with fixed versions to avoid compatibility issues
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the entire application code into the container
-COPY . .
+# Copy only necessary files
+COPY ./core ./core
+COPY ./models ./models
+COPY ./routers ./routers
+COPY ./services ./services
+COPY ./utils ./utils
+COPY main.py .
+COPY startup.sh .
 
 # Make the startup script executable and fix line endings
 RUN sed -i 's/\r$//' /app/startup.sh && chmod +x /app/startup.sh
