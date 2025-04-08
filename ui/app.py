@@ -248,6 +248,16 @@ def get_terms():
     except Exception as e:
         logging.error(f"Error getting terms: {e}")
         return jsonify({"status": "error", "message": str(e)})
+        
+@app.route('/api/models', methods=['GET'])
+def get_models():
+    """Get available Ollama models"""
+    try:
+        response = requests.get(f"{API_URL}/models", timeout=10)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error getting models: {e}")
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/api/refresh-terms', methods=['POST'])
 def refresh_terms():

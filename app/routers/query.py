@@ -7,10 +7,36 @@ This module provides endpoints for querying the document database.
 from fastapi import APIRouter, HTTPException, Depends, Query as QueryParam
 from typing import List, Dict, Any, Optional
 
-from core.dependencies import get_query_service
+from core.dependencies import get_query_service, get_ollama_client
 from models.schemas import ChatMessage, ChatRequest
+from utils.ollama_client import OllamaClient
 
 router = APIRouter(tags=["query"])
+
+@router.get("/models", summary="Get available Ollama models", 
+            description="Retrieves the list of available models from the Ollama server")
+async def get_models():
+    """Get the list of available models from the Ollama server."""
+    ollama_client = get_ollama_client()
+    
+    try:
+        models = ollama_client.get_available_models()
+        
+        # Extract and organize model information
+        result = {
+            "status": "success",
+            "models": [model["name"] for model in models],
+            "model_info": models,
+            "default_model": ollama_client.model,
+            "default_embedding_model": ollama_client.embedding_model
+        }
+        
+        return result
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error retrieving models: {str(e)}"
+        }
 
 @router.get("/query", summary="Retrieve relevant documents", 
            description="Query for the most relevant document based on input text.")
@@ -24,12 +50,27 @@ async def query_documents(
     enhance_query: bool = QueryParam(True, description="Whether to enhance the query for better retrieval"),
     use_elasticsearch: bool = QueryParam(None, description="Whether to use Elasticsearch (auto if None)"),
     hybrid_search: bool = QueryParam(True, description="Whether to combine results from ChromaDB and Elasticsearch"),
-    apply_reranking: bool = QueryParam(True, description="Whether to apply reranking to improve document relevance")
+    apply_reranking: bool = QueryParam(True, description="Whether to apply reranking to improve document relevance"),
+    check_question_matches: bool = QueryParam(True, description="Whether to check for question matches"),
+    query_model: str = QueryParam(None, description="Model to use for generating the response"),
+    embedding_model: str = QueryParam(None, description="Model to use for generating embeddings")
 ):
     """Query for relevant documents based on input text."""
     query_service = get_query_service()
     
     try:
+        # If custom models are specified, use them
+        ollama_client = None
+        if query_model or embedding_model:
+            ollama_client = get_ollama_client()
+            # Create a temporary client with the specified models
+            if query_model or embedding_model:
+                ollama_client = OllamaClient(
+                    model=query_model or ollama_client.model,
+                    embedding_model=embedding_model or ollama_client.embedding_model,
+                    base_url=ollama_client.base_url
+                )
+        
         result = query_service.process_query(
             query=query,
             n_results=n_results,
@@ -40,7 +81,9 @@ async def query_documents(
             enhance_query=enhance_query,
             use_elasticsearch=use_elasticsearch,
             hybrid_search=hybrid_search,
-            apply_reranking=apply_reranking
+            apply_reranking=apply_reranking,
+            check_question_matches=check_question_matches,
+            custom_ollama_client=ollama_client
         )
         
         return result
@@ -73,7 +116,9 @@ async def query_documents(
 @router.post("/chat", summary="Chat with contextual memory", 
            description="Query with chat history and RAG for a conversational experience.")
 async def chat_query(
-    chat_request: ChatRequest
+    chat_request: ChatRequest,
+    query_model: str = QueryParam(None, description="Model to use for generating the response"),
+    embedding_model: str = QueryParam(None, description="Model to use for generating embeddings")
 ):
     """Process a chat query with conversation history."""
     query_service = get_query_service()
@@ -100,6 +145,18 @@ async def chat_query(
                 "response": "No user message found in the conversation history.",
                 "sources": {"documents": [], "ids": [], "metadatas": []}
             }
+        
+        # If custom models are specified, use them
+        ollama_client = None
+        if query_model or embedding_model:
+            ollama_client = get_ollama_client()
+            # Create a temporary client with the specified models
+            if query_model or embedding_model:
+                ollama_client = OllamaClient(
+                    model=query_model or ollama_client.model,
+                    embedding_model=embedding_model or ollama_client.embedding_model,
+                    base_url=ollama_client.base_url
+                )
             
         # First, do a regular query to get relevant documents
         rag_result = query_service.process_query(
@@ -112,7 +169,8 @@ async def chat_query(
             enhance_query=chat_request.enhance_query,
             use_elasticsearch=chat_request.use_elasticsearch,
             hybrid_search=chat_request.hybrid_search,
-            apply_reranking=chat_request.apply_reranking  # Use reranking if enabled
+            apply_reranking=chat_request.apply_reranking,  # Use reranking if enabled
+            custom_ollama_client=ollama_client
         )
         
         # Check if we got a valid result
@@ -133,7 +191,8 @@ async def chat_query(
         # Generate a chat response with the context
         response = query_service.process_chat(
             messages=ollama_messages,
-            context=context
+            context=context,
+            custom_ollama_client=ollama_client
         )
         
         # Add the sources from the RAG query to the chat response

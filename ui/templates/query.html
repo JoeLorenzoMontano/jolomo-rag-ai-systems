@@ -35,6 +35,24 @@
                             <label for="n-results" class="form-label">Number of Results</label>
                             <input type="number" class="form-control" id="n-results" value="3" min="1" max="10">
                             <div class="form-text">Number of document chunks to retrieve</div>
+                            
+                            <div class="form-group mt-3">
+                                <label for="query-model" class="form-label">Query Model</label>
+                                <select class="form-select" id="query-model">
+                                    <option value="">Default (from config)</option>
+                                    <!-- Will be populated from API -->
+                                </select>
+                                <div class="form-text">Model used for generating responses</div>
+                            </div>
+                            
+                            <div class="form-group mt-3">
+                                <label for="embedding-model" class="form-label">Embedding Model</label>
+                                <select class="form-select" id="embedding-model">
+                                    <option value="">Default (from config)</option>
+                                    <!-- Will be populated from API -->
+                                </select>
+                                <div class="form-text">Model used for embedding query and questions</div>
+                            </div>
                         </div>
                         
                         <div class="col-md-6">
@@ -156,6 +174,51 @@
             const showClassificationCheckbox = document.getElementById('show-classification');
             const classificationCard = document.getElementById('classification-card');
             const classificationContent = document.getElementById('classification-content');
+            const queryModelSelect = document.getElementById('query-model');
+            const embeddingModelSelect = document.getElementById('embedding-model');
+            
+            // Load available models from API
+            const loadModels = async () => {
+                try {
+                    const response = await fetch('/api/models');
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.models) {
+                        // Populate model dropdowns
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model;
+                            option.textContent = model;
+                            queryModelSelect.appendChild(option.cloneNode(true));
+                            
+                            // Only add embedding-compatible models to embedding dropdown
+                            if (model.includes('minilm') || model.includes('embed') || model.includes('e5')) {
+                                embeddingModelSelect.appendChild(option);
+                            }
+                        });
+                        
+                        // Set the defaults if provided
+                        if (data.default_model) {
+                            const defaultOption = document.createElement('option');
+                            defaultOption.value = "";
+                            defaultOption.textContent = `Default (${data.default_model})`;
+                            queryModelSelect.querySelector('option[value=""]').replaceWith(defaultOption);
+                        }
+                        
+                        if (data.default_embedding_model) {
+                            const defaultEmbOption = document.createElement('option');
+                            defaultEmbOption.value = "";
+                            defaultEmbOption.textContent = `Default (${data.default_embedding_model})`;
+                            embeddingModelSelect.querySelector('option[value=""]').replaceWith(defaultEmbOption);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading models:', error);
+                }
+            };
+            
+            // Load models when page loads
+            loadModels();
             
             // Toggle web search options visibility
             webSearchCheckbox.addEventListener('change', () => {
@@ -192,6 +255,8 @@
                 const hybridSearch = document.getElementById('hybrid-search').checked;
                 const applyReranking = document.getElementById('apply-reranking').checked;
                 const checkQuestionMatches = document.getElementById('check-question-matches').checked;
+                const queryModel = queryModelSelect.value;
+                const embeddingModel = embeddingModelSelect.value;
                 
                 if (!queryText) {
                     alert('Please enter a question');
@@ -235,7 +300,9 @@
                             use_elasticsearch: useElasticsearch,
                             hybrid_search: hybridSearch,
                             apply_reranking: applyReranking,
-                            check_question_matches: checkQuestionMatches
+                            check_question_matches: checkQuestionMatches,
+                            query_model: queryModel,
+                            embedding_model: embeddingModel
                         }),
                         signal: controller.signal
                     });
@@ -446,29 +513,64 @@
                                 ` + sourcesHtml;
                             }
                             
-                            // Add search engine indicator
-                            if (data.search_engine) {
-                                let engineBadge = '';
-                                let engineDesc = '';
+                            // Add search engine and model information
+                            if (data.search_engine || data.query_model || data.embedding_model) {
+                                let infoHtml = '<div class="alert alert-light mb-3">';
                                 
-                                if (data.search_engine === 'elasticsearch') {
-                                    engineBadge = '<span class="badge bg-warning ms-1">Elasticsearch</span>';
-                                    engineDesc = 'Results retrieved using Elasticsearch';
-                                } else if (data.search_engine === 'hybrid') {
-                                    engineBadge = '<span class="badge bg-success ms-1">Hybrid Search</span>';
-                                    engineDesc = 'Results combined from both ChromaDB and Elasticsearch';
-                                } else {
-                                    engineBadge = '<span class="badge bg-info ms-1">ChromaDB</span>';
-                                    engineDesc = 'Results retrieved using ChromaDB vector database';
+                                // Add search engine badge
+                                if (data.search_engine) {
+                                    let engineBadge = '';
+                                    let engineDesc = '';
+                                    
+                                    if (data.search_engine === 'elasticsearch') {
+                                        engineBadge = '<span class="badge bg-warning ms-1">Elasticsearch</span>';
+                                        engineDesc = 'Results retrieved using Elasticsearch';
+                                    } else if (data.search_engine === 'hybrid') {
+                                        engineBadge = '<span class="badge bg-success ms-1">Hybrid Search</span>';
+                                        engineDesc = 'Results combined from both ChromaDB and Elasticsearch';
+                                    } else {
+                                        engineBadge = '<span class="badge bg-info ms-1">ChromaDB</span>';
+                                        engineDesc = 'Results retrieved using ChromaDB vector database';
+                                    }
+                                    
+                                    infoHtml += `
+                                        <div class="mb-2">
+                                            <i class="bi bi-database"></i> 
+                                            <strong>Search Engine:</strong> ${engineBadge}
+                                            <div class="small text-muted mt-1">${engineDesc}</div>
+                                        </div>
+                                    `;
                                 }
                                 
-                                sourcesHtml = `
-                                    <div class="alert alert-light mb-3">
-                                        <i class="bi bi-database"></i> 
-                                        <strong>Search Engine:</strong> ${engineBadge}
-                                        <div class="small text-muted mt-1">${engineDesc}</div>
-                                    </div>
-                                ` + sourcesHtml;
+                                // Add model information
+                                if (data.query_model || data.embedding_model) {
+                                    infoHtml += `
+                                        <div class="mt-2">
+                                            <i class="bi bi-cpu"></i> 
+                                            <strong>Models used:</strong>
+                                    `;
+                                    
+                                    if (data.query_model) {
+                                        infoHtml += `
+                                            <div class="small mt-1">
+                                                <strong>Query model:</strong> <span class="badge bg-primary">${data.query_model}</span>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    if (data.embedding_model) {
+                                        infoHtml += `
+                                            <div class="small mt-1">
+                                                <strong>Embedding model:</strong> <span class="badge bg-secondary">${data.embedding_model}</span>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    infoHtml += '</div>';
+                                }
+                                
+                                infoHtml += '</div>';
+                                sourcesHtml = infoHtml + sourcesHtml;
                             }
                             
                             sourcesContent.innerHTML = sourcesHtml;

@@ -60,7 +60,8 @@ class QueryService:
                      use_elasticsearch: Optional[bool] = None,
                      hybrid_search: bool = True,
                      apply_reranking: bool = True,
-                     check_question_matches: bool = True) -> Dict[str, Any]:
+                     check_question_matches: bool = True,
+                     custom_ollama_client: Optional[OllamaClient] = None) -> Dict[str, Any]:
         """
         Process a query and generate a response.
         
@@ -76,6 +77,7 @@ class QueryService:
             hybrid_search: Whether to combine ChromaDB and Elasticsearch results for better retrieval
             apply_reranking: Whether to apply reranking to retrieved results
             check_question_matches: Whether to check for matches with pre-generated questions
+            custom_ollama_client: Optional custom Ollama client with specific models
             
         Returns:
             Dictionary with query response and sources
@@ -95,6 +97,13 @@ class QueryService:
             # Store the original query for response
             original_query = query
             
+            # Use the custom client if provided or fall back to the default
+            ollama_client = custom_ollama_client or self.ollama_client
+            
+            # Log model information if custom client is used
+            if custom_ollama_client:
+                self.logger.info(f"Using custom models - Query: {ollama_client.model}, Embedding: {ollama_client.embedding_model}")
+            
             # Enhance the query if enabled
             search_query = query
             enhanced_query_text = None
@@ -102,7 +111,7 @@ class QueryService:
             if enhance_query:
                 try:
                     self.logger.info(f"Enhancing query: '{query}'")
-                    enhanced_query_text = self.ollama_client.enhance_query(query)
+                    enhanced_query_text = ollama_client.enhance_query(query)
                     
                     if enhanced_query_text and enhanced_query_text != query:
                         self.logger.info(f"Enhanced query: '{enhanced_query_text}'")
@@ -111,7 +120,7 @@ class QueryService:
                     self.logger.warning(f"Query enhancement failed: {e}, using original query")
             
             # Generate embedding for the query using Ollama
-            query_embedding = self.ollama_client.generate_embedding(search_query)
+            query_embedding = ollama_client.generate_embedding(search_query)
             
             # Log the embedding dimension for debugging
             self.logger.info(f"Generated query embedding with dimension: {len(query_embedding)}")
@@ -355,7 +364,7 @@ class QueryService:
             if check_question_matches and docs and metadatas:
                 try:
                     self.logger.info("Checking for matches with pre-generated questions")
-                    question_matches, exact_question_match = self._find_matching_questions(query, metadatas, docs)
+                    question_matches, exact_question_match = self._find_matching_questions(query, metadatas, docs, ollama_client)
                     
                     if exact_question_match:
                         self.logger.info(f"Found exact question match: '{exact_question_match['question']}'")
@@ -422,7 +431,8 @@ class QueryService:
                     self.logger.error(f"Error during web search: {e}")
                     # Continue with only vector DB results
             
-            response = self.ollama_client.generate_response(context=context, query=query)
+            # Generate response using the selected model
+            response = ollama_client.generate_response(context=context, query=query)
             
             # Clean up the response for better frontend rendering
             cleaned_results = {
@@ -445,7 +455,9 @@ class QueryService:
                 "source_type": source_type,
                 "search_engine": search_engine,
                 "reranking_applied": reranked,
-                "context_source": context_source
+                "context_source": context_source,
+                "query_model": ollama_client.model,  # Include the model information in response
+                "embedding_model": ollama_client.embedding_model
             }
             
             # Add enhanced query information
@@ -500,7 +512,8 @@ class QueryService:
             
             return error_response
             
-    def _find_matching_questions(self, user_query: str, metadatas: List[Dict[str, Any]], docs: List[str]) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    def _find_matching_questions(self, user_query: str, metadatas: List[Dict[str, Any]], docs: List[str], 
+                              ollama_client: Optional[OllamaClient] = None) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """
         Find pre-generated questions that match the user's query from the retrieved document metadata.
         Uses embedding-based semantic similarity when possible, falling back to token similarity.
@@ -509,6 +522,7 @@ class QueryService:
             user_query: The user's query string
             metadatas: List of metadata dictionaries from retrieved documents
             docs: List of document texts corresponding to the metadata
+            ollama_client: Optional custom Ollama client to use for embeddings
             
         Returns:
             Tuple of (list_of_matching_questions, exact_match_if_found)
@@ -522,7 +536,9 @@ class QueryService:
         
         # Generate embedding for user query for semantic matching
         try:
-            query_embedding = self.ollama_client.generate_embedding(user_query)
+            # Use the provided Ollama client or fall back to the default
+            client = ollama_client or self.ollama_client
+            query_embedding = client.generate_embedding(user_query)
             use_embeddings = True
             self.logger.info(f"Generated embedding for question matching with dimension: {len(query_embedding)}")
         except Exception as e:
@@ -584,7 +600,7 @@ class QueryService:
                 if use_embeddings:
                     try:
                         # Generate embedding for the question
-                        question_embedding = self.ollama_client.generate_embedding(question)
+                        question_embedding = client.generate_embedding(question)
                         
                         # Calculate cosine similarity
                         similarity = self._compute_embedding_similarity(query_embedding, question_embedding)
@@ -754,13 +770,14 @@ class QueryService:
             
         return combined_docs, combined_ids, combined_metadatas, combined_distances
         
-    def process_chat(self, messages: List[Dict[str, str]], context: Optional[str] = None) -> Dict[str, Any]:
+    def process_chat(self, messages: List[Dict[str, str]], context: Optional[str] = None, custom_ollama_client: Optional[OllamaClient] = None) -> Dict[str, Any]:
         """
         Process a chat query with conversation history.
         
         Args:
             messages: List of message objects with 'role' and 'content' keys
             context: Optional context from RAG to use for grounding responses
+            custom_ollama_client: Optional custom Ollama client with specific models
             
         Returns:
             Dictionary with the response and other metadata
@@ -779,6 +796,13 @@ class QueryService:
                     "response": "No user message found in conversation history",
                     "error": "Missing user query"
                 }
+                
+            # Use the provided client or fall back to the default
+            ollama_client = custom_ollama_client or self.ollama_client
+            
+            # Log model information if using custom client
+            if custom_ollama_client:
+                self.logger.info(f"Using custom models for chat - Query: {ollama_client.model}, Embedding: {ollama_client.embedding_model}")
                 
             # Classify the query to determine if it needs new RAG context or just conversation history
             source_type, confidence, classification_metadata = self.query_classifier.classify(
@@ -809,7 +833,7 @@ class QueryService:
                 chat_messages = list(messages)
                 chat_messages.insert(0, system_message)
                 
-                response = self.ollama_client.generate_chat_response(
+                response = ollama_client.generate_chat_response(
                     messages=chat_messages,
                     context=None
                 )
@@ -819,16 +843,16 @@ class QueryService:
                 # Only include essential RAG context to avoid overriding conversation flow
                 if context:
                     # Use context but reduce its importance
-                    response = self.ollama_client.generate_chat_response(
+                    response = ollama_client.generate_chat_response(
                         messages=messages,
                         context=context
                     )
                 else:
-                    response = self.ollama_client.generate_chat_response(messages=messages)
+                    response = ollama_client.generate_chat_response(messages=messages)
             else:
                 # Standard RAG approach with full context
                 self.logger.info("Using full RAG context with conversation history")
-                response = self.ollama_client.generate_chat_response(
+                response = ollama_client.generate_chat_response(
                     messages=messages,
                     context=context
                 )
@@ -840,7 +864,9 @@ class QueryService:
                 "messages": messages,
                 "source_type": source_type,
                 "confidence": confidence,
-                "classification": classification_metadata
+                "classification": classification_metadata,
+                "query_model": ollama_client.model,
+                "embedding_model": ollama_client.embedding_model
             }
             
             return response_data

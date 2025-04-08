@@ -90,6 +90,31 @@ class OllamaClient:
         except Exception as e:
             print(f"Error checking available models: {e}")
             print("Will use default model settings and let Ollama handle errors.")
+    
+    def get_available_models(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves the list of available models from the Ollama server.
+        
+        Returns:
+            List of model information dictionaries with 'name' and other metadata
+        """
+        try:
+            response = requests.get(f"{self.base_url}/api/tags")
+            response.raise_for_status()
+            
+            models_data = response.json()
+            
+            # Handle different response formats from Ollama
+            if "models" in models_data:
+                return models_data["models"]
+            elif isinstance(models_data, list):
+                return models_data
+            else:
+                return []
+                
+        except Exception as e:
+            print(f"Error retrieving available models: {e}")
+            return []
 
     def generate_embedding(self, input_text: str) -> List[float]:
         """
