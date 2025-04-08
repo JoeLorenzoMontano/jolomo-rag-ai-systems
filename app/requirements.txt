@@ -11,3 +11,4 @@ elasticsearch>=8.10.0  # Elasticsearch client
 langchain>=0.0.267  # For document reranking
 sentence-transformers>=2.2.2  # For cross-encoder reranking
 rank-bm25>=0.2.2  # For BM25 fallback reranking
+openai>=1.3.5  # For OpenAI API integration

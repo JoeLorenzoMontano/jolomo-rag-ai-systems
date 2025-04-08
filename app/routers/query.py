@@ -6,8 +6,12 @@ This module provides endpoints for querying the document database.
 
 from fastapi import APIRouter, HTTPException, Depends, Query as QueryParam
 from typing import List, Dict, Any, Optional
+import logging
+import os
+import requests
 
 from core.dependencies import get_query_service, get_ollama_client
+from core.config import get_settings
 from models.schemas import ChatMessage, ChatRequest
 from utils.ollama_client import OllamaClient
 
@@ -116,12 +120,11 @@ async def query_documents(
 @router.post("/chat", summary="Chat with contextual memory", 
            description="Query with chat history and RAG for a conversational experience.")
 async def chat_query(
-    chat_request: ChatRequest,
-    query_model: str = QueryParam(None, description="Model to use for generating the response"),
-    embedding_model: str = QueryParam(None, description="Model to use for generating embeddings")
+    chat_request: ChatRequest
 ):
     """Process a chat query with conversation history."""
     query_service = get_query_service()
+    settings = get_settings()
     
     try:
         # Get the latest user message (should be the last message in the list)
@@ -146,54 +149,139 @@ async def chat_query(
                 "sources": {"documents": [], "ids": [], "metadatas": []}
             }
         
-        # If custom models are specified, use them
-        ollama_client = None
-        if query_model or embedding_model:
+        # Handle different model options
+        if chat_request.use_openai and settings.get("openai_api_key"):
+            # Use OpenAI API for chat completion
+            logging.info(f"Using OpenAI model: {chat_request.model}")
+            
+            # First, do a regular query to get relevant documents (using Ollama for embeddings)
             ollama_client = get_ollama_client()
-            # Create a temporary client with the specified models
-            if query_model or embedding_model:
+            
+            rag_result = query_service.process_query(
+                query=latest_message,
+                n_results=chat_request.n_results,
+                combine_chunks=chat_request.combine_chunks,
+                web_search=chat_request.web_search,
+                web_results_count=chat_request.web_results_count,
+                explain_classification=False,  # Always false for chat
+                enhance_query=chat_request.enhance_query,
+                use_elasticsearch=chat_request.use_elasticsearch,
+                hybrid_search=chat_request.hybrid_search,
+                apply_reranking=chat_request.apply_reranking,
+                check_question_matches=chat_request.check_question_matches,
+                custom_ollama_client=ollama_client
+            )
+            
+            # Check if we got a valid result
+            if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
+                return rag_result
+            
+            # Get the context from the RAG result
+            context = ""
+            if rag_result.get("sources") and rag_result.get("sources").get("documents"):
+                documents = rag_result.get("sources").get("documents")
+                if documents:
+                    # Combine all retrieved documents as context
+                    context = "\n\n".join(documents)
+            
+            # Format the OpenAI messages
+            openai_messages = []
+            
+            # Add system message with context
+            if context:
+                system_message = f"You are a helpful assistant. Answer the user's questions based on the following information:\n\n{context}\n\nIf the information provided doesn't answer the question, say so clearly."
+                openai_messages.append({"role": "system", "content": system_message})
+            else:
+                openai_messages.append({"role": "system", "content": "You are a helpful assistant."})
+            
+            # Add the conversation history
+            for msg in chat_request.messages:
+                openai_messages.append({"role": msg.role, "content": msg.content})
+                
+            # Call OpenAI API
+            try:
+                import openai
+                openai.api_key = settings.get("openai_api_key")
+                
+                model_name = chat_request.model if chat_request.model else "gpt-3.5-turbo"
+                openai_response = openai.chat.completions.create(
+                    model=model_name,
+                    messages=openai_messages,
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+                
+                response_content = openai_response.choices[0].message.content
+                
+                # Format response
+                response = {
+                    "status": "success",
+                    "response": response_content,
+                    "model_used": model_name,
+                    "provider": "openai"
+                }
+                
+            except Exception as e:
+                logging.error(f"Error with OpenAI API: {e}")
+                response = {
+                    "status": "error",
+                    "response": f"Error with OpenAI API: {str(e)}",
+                    "model_used": chat_request.model,
+                    "provider": "openai"
+                }
+        else:
+            # Use Ollama for chat completion
+            logging.info(f"Using Ollama model: {chat_request.model or 'default'}")
+            
+            # If custom models are specified, use them
+            ollama_client = None
+            if chat_request.model:
+                ollama_client = get_ollama_client()
+                # Create a temporary client with the specified models
                 ollama_client = OllamaClient(
-                    model=query_model or ollama_client.model,
-                    embedding_model=embedding_model or ollama_client.embedding_model,
+                    model=chat_request.model or ollama_client.model,
+                    embedding_model=ollama_client.embedding_model,
                     base_url=ollama_client.base_url
                 )
             
-        # First, do a regular query to get relevant documents
-        rag_result = query_service.process_query(
-            query=latest_message,
-            n_results=chat_request.n_results,
-            combine_chunks=chat_request.combine_chunks,
-            web_search=chat_request.web_search,
-            web_results_count=chat_request.web_results_count,
-            explain_classification=False,  # Always false for chat
-            enhance_query=chat_request.enhance_query,
-            use_elasticsearch=chat_request.use_elasticsearch,
-            hybrid_search=chat_request.hybrid_search,
-            apply_reranking=chat_request.apply_reranking,  # Use reranking if enabled
-            custom_ollama_client=ollama_client
-        )
-        
-        # Check if we got a valid result
-        if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
-            return rag_result
+            # First, do a regular query to get relevant documents
+            rag_result = query_service.process_query(
+                query=latest_message,
+                n_results=chat_request.n_results,
+                combine_chunks=chat_request.combine_chunks,
+                web_search=chat_request.web_search,
+                web_results_count=chat_request.web_results_count,
+                explain_classification=False,  # Always false for chat
+                enhance_query=chat_request.enhance_query,
+                use_elasticsearch=chat_request.use_elasticsearch,
+                hybrid_search=chat_request.hybrid_search,
+                apply_reranking=chat_request.apply_reranking,
+                check_question_matches=chat_request.check_question_matches,
+                custom_ollama_client=ollama_client
+            )
             
-        # Convert messages to the format expected by the Ollama API
-        ollama_messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
-        
-        # Get the context from the RAG result
-        context = None
-        if rag_result.get("sources") and rag_result.get("sources").get("documents"):
-            documents = rag_result.get("sources").get("documents")
-            if documents:
-                # Combine all retrieved documents as context
-                context = "\n\n".join(documents)
-        
-        # Generate a chat response with the context
-        response = query_service.process_chat(
-            messages=ollama_messages,
-            context=context,
-            custom_ollama_client=ollama_client
-        )
+            # Check if we got a valid result
+            if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
+                return rag_result
+                
+            # Convert messages to the format expected by the Ollama API
+            ollama_messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
+            
+            # Get the context from the RAG result
+            context = None
+            if rag_result.get("sources") and rag_result.get("sources").get("documents"):
+                documents = rag_result.get("sources").get("documents")
+                if documents:
+                    # Combine all retrieved documents as context
+                    context = "\n\n".join(documents)
+            
+            # Generate a chat response with the context
+            response = query_service.process_chat(
+                messages=ollama_messages,
+                context=context,
+                custom_ollama_client=ollama_client
+            )
+            response["provider"] = "ollama"
         
         # Add the sources from the RAG query to the chat response
         response["sources"] = rag_result.get("sources", {"documents": [], "ids": [], "metadatas": []})

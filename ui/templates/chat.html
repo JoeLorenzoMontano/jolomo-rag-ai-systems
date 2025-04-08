@@ -113,6 +113,17 @@
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h1>Chat</h1>
             <div class="header-actions">
+                <div class="input-group me-2" style="max-width: 250px;">
+                    <label class="input-group-text" for="model-selector">
+                        <i class="bi bi-cpu"></i>
+                    </label>
+                    <select class="form-select form-select-sm" id="model-selector">
+                        <option value="default" selected>Default (Ollama)</option>
+                        <option value="openai_gpt4">OpenAI GPT-4</option>
+                        <option value="openai_gpt35">OpenAI GPT-3.5</option>
+                        <option value="openai_assistant" disabled>OpenAI Assistant (soon)</option>
+                    </select>
+                </div>
                 <button id="clear-chat" class="btn btn-outline-secondary btn-sm me-2">
                     <i class="bi bi-trash"></i> Clear Chat
                 </button>
@@ -153,6 +164,7 @@
             const chatInput = document.getElementById('chat-input');
             const clearChatButton = document.getElementById('clear-chat');
             const typingIndicator = document.getElementById('typing-indicator');
+            const modelSelector = document.getElementById('model-selector');
             
             // Store conversation history
             let conversationHistory = [
@@ -212,6 +224,31 @@
                 typingIndicator.style.display = 'block';
                 
                 try {
+                    // Get selected model
+                    const selectedModel = modelSelector.value;
+                    
+                    // Determine model parameters based on selection
+                    let queryModel = null;
+                    let useOpenAI = false;
+                    
+                    switch(selectedModel) {
+                        case 'openai_gpt4':
+                            useOpenAI = true;
+                            queryModel = 'gpt-4';
+                            break;
+                        case 'openai_gpt35':
+                            useOpenAI = true;
+                            queryModel = 'gpt-3.5-turbo';
+                            break;
+                        case 'openai_assistant':
+                            useOpenAI = true;
+                            queryModel = 'assistant';
+                            break;
+                        default:
+                            // Use default Ollama model
+                            queryModel = null;
+                    }
+                    
                     // Call the API with full conversation history
                     const response = await fetch('/chat-query', {
                         method: 'POST',
@@ -228,7 +265,9 @@
                             hybrid_search: true, // Use hybrid search for better results
                             web_results_count: 3,
                             apply_reranking: true, // Enable reranking for better results
-                            check_question_matches: true // Enable question matching feature
+                            check_question_matches: true, // Enable question matching feature
+                            model: queryModel,
+                            use_openai: useOpenAI
                         })
                     });
                     
