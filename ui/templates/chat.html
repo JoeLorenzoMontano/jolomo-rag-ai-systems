@@ -124,6 +124,10 @@
                         <!-- Assistant options will be dynamically added here -->
                     </select>
                 </div>
+                <div class="form-check form-switch me-3 mt-1">
+                    <input class="form-check-input" type="checkbox" id="enable-web-search">
+                    <label class="form-check-label small" for="enable-web-search">Web Search</label>
+                </div>
                 <button id="clear-chat" class="btn btn-outline-secondary btn-sm me-2">
                     <i class="bi bi-trash"></i> Clear Chat
                 </button>
@@ -165,6 +169,7 @@
             const clearChatButton = document.getElementById('clear-chat');
             const typingIndicator = document.getElementById('typing-indicator');
             const modelSelector = document.getElementById('model-selector');
+            const webSearchToggle = document.getElementById('enable-web-search');
             
             // Store conversation history
             let conversationHistory = [
@@ -296,7 +301,7 @@
                             n_results: 3,
                             combine_chunks: true,
                             enhance_query: false,
-                            web_search: null, // Auto-classify
+                            web_search: webSearchToggle.checked, // Use the toggle setting
                             use_elasticsearch: null, // Auto-determine
                             hybrid_search: true, // Use hybrid search for better results
                             web_results_count: 3,
