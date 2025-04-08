@@ -185,6 +185,10 @@ def chat_query():
         })
     
     try:
+        # Get model parameters
+        model = data.get('model')
+        use_openai = data.get('use_openai', False)
+        
         # Call the chat API
         response = requests.post(
             f"{API_URL}/chat",
@@ -198,7 +202,9 @@ def chat_query():
                 'use_elasticsearch': use_elasticsearch,
                 'hybrid_search': hybrid_search,
                 'apply_reranking': apply_reranking,
-                'check_question_matches': check_question_matches
+                'check_question_matches': check_question_matches,
+                'model': model,
+                'use_openai': use_openai
             },
             timeout=None
         )

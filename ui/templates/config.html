@@ -263,8 +263,53 @@
                 }
             }
             
-            // Load the config status
+            // Load current settings from API
+            async function loadCurrentSettings() {
+                try {
+                    const response = await fetch('/api/settings');
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.settings) {
+                        const settings = data.settings;
+                        
+                        // Update form fields based on current settings
+                        document.getElementById('enable-openai').checked = settings.has_openai_key;
+                        
+                        // Set assistant IDs
+                        if (settings.openai_assistant_ids && settings.openai_assistant_ids.length > 0) {
+                            document.getElementById('assistant-ids').value = settings.openai_assistant_ids.join('\n');
+                        }
+                        
+                        // Set web search settings
+                        document.getElementById('enable-web-search').checked = settings.has_serper_key;
+                        document.getElementById('web-search-limit').value = settings.web_results_count || 5;
+                        
+                        // Set elasticsearch settings
+                        document.getElementById('enable-elasticsearch').checked = settings.elasticsearch_enabled;
+                        document.getElementById('elasticsearch-url').value = settings.elasticsearch_url || 'http://elasticsearch:9200';
+                        document.getElementById('elasticsearch-index').value = settings.elasticsearch_index || 'rag-documents';
+                        
+                        // Update OpenAI status in the status panel when we reload the status
+                        // The jQuery-like :contains selector isn't supported in standard DOM queries
+                        const listItems = document.querySelectorAll('.list-group-item');
+                        listItems.forEach(item => {
+                            if (item.textContent.includes('OpenAI')) {
+                                const badge = item.querySelector('.badge');
+                                if (badge) {
+                                    badge.className = `badge bg-${settings.has_openai_key ? 'success' : 'secondary'} rounded-pill`;
+                                    badge.textContent = settings.has_openai_key ? 'Configured' : 'Not Configured';
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading settings:', error);
+                }
+            }
+            
+            // Load the config status and current settings
             loadConfigStatus();
+            loadCurrentSettings();
             
             // Add event listeners for forms
             document.getElementById('llm-config-form').addEventListener('submit', async (e) => {
@@ -283,19 +328,50 @@
                 `;
                 
                 try {
-                    // TODO: Send to backend API
-                    // This should be implemented with actual API endpoints
+                    // Create settings object
+                    const settings = {};
                     
-                    setTimeout(() => {
+                    if (enableOpenAI) {
+                        // Only include API key if it's provided (to update it)
+                        if (openaiApiKey) {
+                            settings.openai_api_key = openaiApiKey;
+                        }
+                        
+                        // Add assistant IDs
+                        if (assistantIds.length > 0) {
+                            settings.openai_assistant_ids = assistantIds;
+                        }
+                    } else {
+                        // If OpenAI is disabled, clear the API key
+                        settings.openai_api_key = "";
+                    }
+                    
+                    // Send to API to update settings
+                    const response = await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(settings)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
                         configStatus.innerHTML = `
                             <div class="alert alert-success">
                                 <i class="bi bi-check-circle"></i> LLM configuration saved successfully!
                             </div>
                         `;
-                        
-                        // Reload status after 2 seconds
-                        setTimeout(loadConfigStatus, 2000);
-                    }, 1000);
+                    } else {
+                        throw new Error(data.message || 'Unknown error');
+                    }
+                    
+                    // Reload status after 2 seconds
+                    setTimeout(() => {
+                        loadConfigStatus();
+                        loadCurrentSettings();
+                    }, 2000);
                 } catch (error) {
                     configStatus.innerHTML = `
                         <div class="alert alert-danger">
