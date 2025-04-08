@@ -9,8 +9,6 @@ import json
 import re
 import numpy as np
 from typing import Dict, List, Any, Tuple, Optional, Union
-
-from sentence_transformers import SentenceTransformer
 from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
 from utils.web_search import WebSearchClient
