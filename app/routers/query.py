@@ -157,23 +157,28 @@ async def chat_query(
             else:
                 logging.info(f"Using OpenAI model: {chat_request.model}")
                 
-            # First, do a regular query to get relevant documents (using Ollama for embeddings)
-            ollama_client = get_ollama_client()
+            # Skip local document retrieval if use_local_docs is False
+            context = ""
+            rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": False}
             
-            rag_result = query_service.process_query(
-                query=latest_message,
-                n_results=chat_request.n_results,
-                combine_chunks=chat_request.combine_chunks,
-                web_search=chat_request.web_search,
-                web_results_count=chat_request.web_results_count,
-                explain_classification=False,  # Always false for chat
-                enhance_query=chat_request.enhance_query,
-                use_elasticsearch=chat_request.use_elasticsearch,
-                hybrid_search=chat_request.hybrid_search,
-                apply_reranking=chat_request.apply_reranking,
-                check_question_matches=chat_request.check_question_matches,
-                custom_ollama_client=ollama_client
-            )
+            if chat_request.use_local_docs:
+                # Do a regular query to get relevant documents (using Ollama for embeddings)
+                ollama_client = get_ollama_client()
+                
+                rag_result = query_service.process_query(
+                    query=latest_message,
+                    n_results=chat_request.n_results,
+                    combine_chunks=chat_request.combine_chunks,
+                    web_search=chat_request.web_search,
+                    web_results_count=chat_request.web_results_count,
+                    explain_classification=False,  # Always false for chat
+                    enhance_query=chat_request.enhance_query,
+                    use_elasticsearch=chat_request.use_elasticsearch,
+                    hybrid_search=chat_request.hybrid_search,
+                    apply_reranking=chat_request.apply_reranking,
+                    check_question_matches=chat_request.check_question_matches,
+                    custom_ollama_client=ollama_client
+                )
             
             # Check if we got a valid result
             if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
@@ -329,28 +334,39 @@ async def chat_query(
                     logging.error(f"Error creating custom Ollama client: {e}")
                     # Continue with default client
             
-            # First, do a regular query to get relevant documents
-            try:
-                rag_result = query_service.process_query(
-                    query=latest_message,
-                    n_results=chat_request.n_results,
-                    combine_chunks=chat_request.combine_chunks,
-                    web_search=chat_request.web_search,
-                    web_results_count=chat_request.web_results_count,
-                    explain_classification=False,  # Always false for chat
-                    enhance_query=chat_request.enhance_query,
-                    use_elasticsearch=chat_request.use_elasticsearch,
-                    hybrid_search=chat_request.hybrid_search,
-                    apply_reranking=chat_request.apply_reranking,
-                    check_question_matches=chat_request.check_question_matches,
-                    custom_ollama_client=ollama_client
-                )
-            except Exception as e:
-                logging.error(f"Error during RAG query: {e}")
+            # First, decide whether to perform document retrieval
+            if chat_request.use_local_docs:
+                try:
+                    # Do a regular query to get relevant documents
+                    rag_result = query_service.process_query(
+                        query=latest_message,
+                        n_results=chat_request.n_results,
+                        combine_chunks=chat_request.combine_chunks,
+                        web_search=chat_request.web_search,
+                        web_results_count=chat_request.web_results_count,
+                        explain_classification=False,  # Always false for chat
+                        enhance_query=chat_request.enhance_query,
+                        use_elasticsearch=chat_request.use_elasticsearch,
+                        hybrid_search=chat_request.hybrid_search,
+                        apply_reranking=chat_request.apply_reranking,
+                        check_question_matches=chat_request.check_question_matches,
+                        custom_ollama_client=ollama_client
+                    )
+                except Exception as e:
+                    logging.error(f"Error during RAG query: {e}")
+                    rag_result = {
+                        "status": "success",
+                        "sources": {"documents": [], "ids": [], "metadatas": []},
+                        "source_type": "documents"
+                    }
+            else:
+                # Skip local document retrieval
+                logging.info("Skipping local document retrieval as requested")
                 rag_result = {
                     "status": "success",
                     "sources": {"documents": [], "ids": [], "metadatas": []},
-                    "source_type": "documents"
+                    "source_type": "none",
+                    "web_search_used": chat_request.web_search or False
                 }
             
             # Check if we got a valid result

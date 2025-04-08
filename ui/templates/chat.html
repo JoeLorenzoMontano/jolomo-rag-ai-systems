@@ -128,6 +128,10 @@
                     <input class="form-check-input" type="checkbox" id="enable-web-search">
                     <label class="form-check-label small" for="enable-web-search">Web Search</label>
                 </div>
+                <div class="form-check form-switch me-3 mt-1">
+                    <input class="form-check-input" type="checkbox" id="enable-local-docs" checked>
+                    <label class="form-check-label small" for="enable-local-docs">Local Docs</label>
+                </div>
                 <button id="clear-chat" class="btn btn-outline-secondary btn-sm me-2">
                     <i class="bi bi-trash"></i> Clear Chat
                 </button>
@@ -170,6 +174,7 @@
             const typingIndicator = document.getElementById('typing-indicator');
             const modelSelector = document.getElementById('model-selector');
             const webSearchToggle = document.getElementById('enable-web-search');
+            const localDocsToggle = document.getElementById('enable-local-docs');
             
             // Store conversation history
             let conversationHistory = [
@@ -301,7 +306,8 @@
                             n_results: 3,
                             combine_chunks: true,
                             enhance_query: false,
-                            web_search: webSearchToggle.checked, // Use the toggle setting
+                            web_search: webSearchToggle.checked, // Use the web search toggle setting
+                            use_local_docs: localDocsToggle.checked, // Use the local docs toggle setting
                             use_elasticsearch: null, // Auto-determine
                             hybrid_search: true, // Use hybrid search for better results
                             web_results_count: 3,
