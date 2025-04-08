@@ -126,6 +126,134 @@ async def chat_query(
     query_service = get_query_service()
     settings = get_settings()
     
+    # IMMEDIATELY check if this is an OpenAI assistant with local docs disabled
+    # In this case we can skip the entire RAG pipeline
+    if (chat_request.use_openai and 
+        chat_request.model == 'assistant' and 
+        chat_request.assistant_id and 
+        not chat_request.use_local_docs and
+        settings.get("openai_api_key")):
+        
+        logging.info(f"FAST PATH: Using OpenAI Assistant without local document retrieval")
+        
+        # Extract the latest user message to use as query
+        latest_message = None
+        for msg in reversed(chat_request.messages):
+            if msg.role == "user":
+                latest_message = msg.content
+                break
+                
+        if not latest_message:
+            return {
+                "status": "error",
+                "response": "No user message found in the conversation history.",
+                "sources": {"documents": [], "ids": [], "metadatas": []}
+            }
+        
+        # Initialize with empty context and sources
+        rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": False}
+        
+        # Only do web search if specifically requested 
+        if chat_request.web_search:
+            logging.info(f"Performing web search only for OpenAI Assistant")
+            try:
+                from utils.web_search import WebSearchClient
+                web_search_client = WebSearchClient()
+                web_results = web_search_client.search_with_serper(latest_message, num_results=chat_request.web_results_count)
+                if web_results:
+                    rag_result["sources"]["web_results"] = web_results
+                    rag_result["web_search_used"] = True
+            except Exception as e:
+                logging.error(f"Error during web search for OpenAI Assistant: {e}")
+                
+        # Direct OpenAI assistant call, skipping all embedding generation and RAG
+        try:
+            import openai
+            openai.api_key = settings.get("openai_api_key")
+            
+            # Use the Assistants API
+            # Create a thread
+            thread = openai.beta.threads.create()
+            
+            # Add user messages to the thread
+            for msg in chat_request.messages:
+                if msg.role == "user":
+                    openai.beta.threads.messages.create(
+                        thread_id=thread.id,
+                        role="user",
+                        content=msg.content
+                    )
+            
+            # Add web search results if available
+            if chat_request.web_search and rag_result["web_search_used"] and rag_result["sources"]["web_results"]:
+                web_results = rag_result["sources"]["web_results"]
+                web_results_text = WebSearchClient().format_results_as_context(web_results)
+                web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
+                openai.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=web_context_msg
+                )
+            
+            # Run the assistant on the thread
+            run = openai.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=chat_request.assistant_id
+            )
+            
+            # Poll for completion - in a real app, you'd use a webhook
+            import time
+            run_status = run.status
+            max_attempts = 30  # 30 seconds max wait time
+            attempts = 0
+            
+            while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
+                time.sleep(1)  # Wait for 1 second
+                run = openai.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
+                run_status = run.status
+                attempts += 1
+            
+            # Get the assistant's messages
+            messages = openai.beta.threads.messages.list(
+                thread_id=thread.id
+            )
+            
+            # Get the last assistant message
+            assistant_messages = [msg for msg in messages.data if msg.role == "assistant"]
+            if assistant_messages:
+                latest_message = assistant_messages[0]
+                response_content = latest_message.content[0].text.value
+            else:
+                response_content = "The assistant did not provide a response."
+                
+            # Format response
+            response = {
+                "status": "success",
+                "response": response_content,
+                "model_used": "assistant",
+                "provider": "openai",
+                "assistant_id": chat_request.assistant_id,
+                "sources": rag_result["sources"],
+                "web_search_used": rag_result["web_search_used"]
+            }
+            
+            return response
+            
+        except Exception as e:
+            logging.error(f"Error using OpenAI Assistant: {e}")
+            error_response = {
+                "status": "error",
+                "response": f"Error using OpenAI Assistant: {str(e)}",
+                "model_used": "assistant",
+                "provider": "openai",
+                "sources": {"documents": [], "ids": [], "metadatas": []}
+            }
+            return error_response
+    
+    # Standard path for all other cases
     try:
         # Get the latest user message (should be the last message in the list)
         if not chat_request.messages or len(chat_request.messages) == 0:
