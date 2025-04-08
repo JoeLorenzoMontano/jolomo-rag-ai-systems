@@ -161,12 +161,24 @@ async def chat_query(
             context = ""
             rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": chat_request.web_search or False}
             
-            # Check if this is an OpenAI assistant - if so, skip all RAG processing for local docs
+            # For OpenAI assistants with local docs disabled, skip ALL document retrieval/RAG processing
             if chat_request.model == 'assistant' and chat_request.assistant_id and not chat_request.use_local_docs:
-                logging.info(f"Using OpenAI Assistant without local document retrieval")
-                # For OpenAI assistants without local docs, just pass the query directly without any RAG processing
-                # Since assistant has its own files/retrieval capabilities
-            # Only perform RAG if local docs are enabled
+                logging.info(f"Using OpenAI Assistant without local document retrieval - skipping all RAG processing")
+                # Only do web search if specifically requested
+                if chat_request.web_search:
+                    logging.info(f"Performing web search only for OpenAI Assistant")
+                    ollama_client = get_ollama_client()
+                    try:
+                        from utils.web_search import WebSearchClient
+                        web_search_client = WebSearchClient()
+                        web_results = web_search_client.search_with_serper(latest_message, num_results=chat_request.web_results_count)
+                        if web_results:
+                            rag_result["sources"]["web_results"] = web_results
+                            rag_result["web_search_used"] = True
+                    except Exception as e:
+                        logging.error(f"Error during web search for OpenAI Assistant: {e}")
+                        rag_result["web_search_used"] = False
+            # Only perform full RAG if local docs are enabled
             elif chat_request.use_local_docs:
                 # Do a regular query to get relevant documents (using Ollama for embeddings)
                 ollama_client = get_ollama_client()
@@ -367,8 +379,24 @@ async def chat_query(
                 "web_search_used": chat_request.web_search or False
             }
             
+            # For OpenAI assistants with local docs disabled, skip ALL document retrieval/RAG processing
+            if chat_request.model == 'assistant' and chat_request.assistant_id and not chat_request.use_local_docs:
+                logging.info(f"Using Ollama with OpenAI Assistant without local document retrieval - skipping all RAG processing")
+                # Only do web search if specifically requested
+                if chat_request.web_search:
+                    logging.info(f"Performing web search only for OpenAI Assistant")
+                    try:
+                        from utils.web_search import WebSearchClient
+                        web_search_client = WebSearchClient()
+                        web_results = web_search_client.search_with_serper(latest_message, num_results=chat_request.web_results_count)
+                        if web_results:
+                            rag_result["sources"]["web_results"] = web_results
+                            rag_result["web_search_used"] = True
+                    except Exception as e:
+                        logging.error(f"Error during web search for OpenAI Assistant: {e}")
+                        rag_result["web_search_used"] = False
             # First, decide whether to perform document retrieval
-            if chat_request.use_local_docs:
+            elif chat_request.use_local_docs:
                 try:
                     # Do a regular query to get relevant documents
                     rag_result = query_service.process_query(
