@@ -233,32 +233,45 @@ async def chat_query(
             # Use Ollama for chat completion
             logging.info(f"Using Ollama model: {chat_request.model or 'default'}")
             
+            # Get the Ollama client
+            ollama_client = get_ollama_client()
+            
             # If custom models are specified, use them
-            ollama_client = None
             if chat_request.model:
-                ollama_client = get_ollama_client()
-                # Create a temporary client with the specified models
-                ollama_client = OllamaClient(
-                    model=chat_request.model or ollama_client.model,
-                    embedding_model=ollama_client.embedding_model,
-                    base_url=ollama_client.base_url
-                )
+                try:
+                    # Create a temporary client with the specified models
+                    ollama_client = OllamaClient(
+                        model=chat_request.model,
+                        embedding_model=ollama_client.embedding_model,
+                        base_url=ollama_client.base_url
+                    )
+                except Exception as e:
+                    logging.error(f"Error creating custom Ollama client: {e}")
+                    # Continue with default client
             
             # First, do a regular query to get relevant documents
-            rag_result = query_service.process_query(
-                query=latest_message,
-                n_results=chat_request.n_results,
-                combine_chunks=chat_request.combine_chunks,
-                web_search=chat_request.web_search,
-                web_results_count=chat_request.web_results_count,
-                explain_classification=False,  # Always false for chat
-                enhance_query=chat_request.enhance_query,
-                use_elasticsearch=chat_request.use_elasticsearch,
-                hybrid_search=chat_request.hybrid_search,
-                apply_reranking=chat_request.apply_reranking,
-                check_question_matches=chat_request.check_question_matches,
-                custom_ollama_client=ollama_client
-            )
+            try:
+                rag_result = query_service.process_query(
+                    query=latest_message,
+                    n_results=chat_request.n_results,
+                    combine_chunks=chat_request.combine_chunks,
+                    web_search=chat_request.web_search,
+                    web_results_count=chat_request.web_results_count,
+                    explain_classification=False,  # Always false for chat
+                    enhance_query=chat_request.enhance_query,
+                    use_elasticsearch=chat_request.use_elasticsearch,
+                    hybrid_search=chat_request.hybrid_search,
+                    apply_reranking=chat_request.apply_reranking,
+                    check_question_matches=chat_request.check_question_matches,
+                    custom_ollama_client=ollama_client
+                )
+            except Exception as e:
+                logging.error(f"Error during RAG query: {e}")
+                rag_result = {
+                    "status": "success",
+                    "sources": {"documents": [], "ids": [], "metadatas": []},
+                    "source_type": "documents"
+                }
             
             # Check if we got a valid result
             if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
@@ -275,12 +288,21 @@ async def chat_query(
                     # Combine all retrieved documents as context
                     context = "\n\n".join(documents)
             
-            # Generate a chat response with the context
-            response = query_service.process_chat(
-                messages=ollama_messages,
-                context=context,
-                custom_ollama_client=ollama_client
-            )
+            try:
+                # Generate a chat response with the context
+                response = query_service.process_chat(
+                    messages=ollama_messages,
+                    context=context,
+                    custom_ollama_client=ollama_client
+                )
+            except Exception as e:
+                logging.error(f"Error during chat response generation: {e}")
+                # Default error response if chat processing fails
+                response = {
+                    "status": "error",
+                    "response": f"An error occurred during chat processing: {str(e)}",
+                    "error": str(e)
+                }
             response["provider"] = "ollama"
         
         # Add the sources from the RAG query to the chat response

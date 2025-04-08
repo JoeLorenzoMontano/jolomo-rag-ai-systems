@@ -277,7 +277,7 @@
                     typingIndicator.style.display = 'none';
                     
                     if (data.status === 'error') {
-                        addMessage(data.message || 'An error occurred', 'assistant', null, true);
+                        addMessage(data.response || data.message || 'An error occurred', 'assistant', null, true);
                     } else if (data.status === 'not_found') {
                         addMessage(data.response || 'No relevant information found', 'assistant', null, true);
                     } else {
