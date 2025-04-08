@@ -332,8 +332,8 @@
                         // Process sources for simplified display
                         let sources = [];
                         
-                        // Add document sources
-                        if (data.sources && data.sources.documents && data.sources.documents.length > 0) {
+                        // Add document sources - only if local docs is enabled
+                        if (localDocsToggle.checked && data.sources && data.sources.documents && data.sources.documents.length > 0) {
                             // Extract just the filenames or IDs without content
                             for (let i = 0; i < data.sources.documents.length; i++) {
                                 const metadata = data.sources.metadatas[i] || {};

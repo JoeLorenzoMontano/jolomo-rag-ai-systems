@@ -157,26 +157,45 @@ async def chat_query(
             else:
                 logging.info(f"Using OpenAI model: {chat_request.model}")
                 
-            # Skip local document retrieval if use_local_docs is False
+            # Initialize with empty context and sources
             context = ""
-            rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": False}
+            rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": chat_request.web_search or False}
             
+            # Only perform RAG if local docs are enabled
             if chat_request.use_local_docs:
                 # Do a regular query to get relevant documents (using Ollama for embeddings)
                 ollama_client = get_ollama_client()
                 
+                if chat_request.web_search or chat_request.check_question_matches:
+                    rag_result = query_service.process_query(
+                        query=latest_message,
+                        n_results=chat_request.n_results,
+                        combine_chunks=chat_request.combine_chunks,
+                        web_search=chat_request.web_search,
+                        web_results_count=chat_request.web_results_count,
+                        explain_classification=False,  # Always false for chat
+                        enhance_query=chat_request.enhance_query,
+                        use_elasticsearch=chat_request.use_elasticsearch,
+                        hybrid_search=chat_request.hybrid_search,
+                        apply_reranking=chat_request.apply_reranking,
+                        check_question_matches=chat_request.check_question_matches,
+                        custom_ollama_client=ollama_client
+                    )
+            elif chat_request.web_search:
+                # Only do web search if local docs are disabled but web search is enabled
+                ollama_client = get_ollama_client()
                 rag_result = query_service.process_query(
                     query=latest_message,
-                    n_results=chat_request.n_results,
-                    combine_chunks=chat_request.combine_chunks,
-                    web_search=chat_request.web_search,
+                    n_results=0,
+                    combine_chunks=False,
+                    web_search=True,
                     web_results_count=chat_request.web_results_count,
-                    explain_classification=False,  # Always false for chat
+                    explain_classification=False,
                     enhance_query=chat_request.enhance_query,
-                    use_elasticsearch=chat_request.use_elasticsearch,
-                    hybrid_search=chat_request.hybrid_search,
-                    apply_reranking=chat_request.apply_reranking,
-                    check_question_matches=chat_request.check_question_matches,
+                    use_elasticsearch=False,
+                    hybrid_search=False,
+                    apply_reranking=False,
+                    check_question_matches=False,
                     custom_ollama_client=ollama_client
                 )
             
@@ -334,6 +353,14 @@ async def chat_query(
                     logging.error(f"Error creating custom Ollama client: {e}")
                     # Continue with default client
             
+            # Initialize rag_result with default empty values
+            rag_result = {
+                "status": "success",
+                "sources": {"documents": [], "ids": [], "metadatas": []},
+                "source_type": "none",
+                "web_search_used": chat_request.web_search or False
+            }
+            
             # First, decide whether to perform document retrieval
             if chat_request.use_local_docs:
                 try:
@@ -359,15 +386,34 @@ async def chat_query(
                         "sources": {"documents": [], "ids": [], "metadatas": []},
                         "source_type": "documents"
                     }
+            elif chat_request.web_search:
+                # Only do web search if local docs are disabled but web search is enabled
+                try:
+                    rag_result = query_service.process_query(
+                        query=latest_message,
+                        n_results=0,
+                        combine_chunks=False,
+                        web_search=True,
+                        web_results_count=chat_request.web_results_count,
+                        explain_classification=False,
+                        enhance_query=chat_request.enhance_query,
+                        use_elasticsearch=False,
+                        hybrid_search=False,
+                        apply_reranking=False,
+                        check_question_matches=False,
+                        custom_ollama_client=ollama_client
+                    )
+                except Exception as e:
+                    logging.error(f"Error during web search: {e}")
+                    rag_result = {
+                        "status": "success",
+                        "sources": {"documents": [], "ids": [], "metadatas": []},
+                        "source_type": "web",
+                        "web_search_used": False
+                    }
             else:
-                # Skip local document retrieval
-                logging.info("Skipping local document retrieval as requested")
-                rag_result = {
-                    "status": "success",
-                    "sources": {"documents": [], "ids": [], "metadatas": []},
-                    "source_type": "none",
-                    "web_search_used": chat_request.web_search or False
-                }
+                # Skip all document retrieval
+                logging.info("Skipping all document retrieval as requested")
             
             # Check if we got a valid result
             if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
@@ -402,7 +448,11 @@ async def chat_query(
             response["provider"] = "ollama"
         
         # Add the sources from the RAG query to the chat response
-        response["sources"] = rag_result.get("sources", {"documents": [], "ids": [], "metadatas": []})
+        # If local docs are disabled, ensure we don't include any sources
+        if not chat_request.use_local_docs:
+            response["sources"] = {"documents": [], "ids": [], "metadatas": []}
+        else:
+            response["sources"] = rag_result.get("sources", {"documents": [], "ids": [], "metadatas": []})
         
         # Add the source_type if available
         if "source_type" in rag_result:
