@@ -212,6 +212,11 @@ def systeminfo_page():
     """Render the system information page"""
     return render_template('systeminfo.html')
 
+@app.route('/config', methods=['GET'])
+def config_page():
+    """Render the configuration page"""
+    return render_template('config.html')
+
 @app.route('/api/chroma-info', methods=['GET'])
 def chroma_info():
     """Get information about ChromaDB"""
@@ -277,6 +282,27 @@ def api_health():
         return jsonify({"api": response.json()})
     except Exception as e:
         logging.error(f"Error getting health status: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get current API settings"""
+    try:
+        response = requests.get(f"{API_URL}/current-settings", timeout=10)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error getting API settings: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+        
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """Update API settings"""
+    try:
+        data = request.get_json()
+        response = requests.post(f"{API_URL}/api-settings", json=data, timeout=10)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error updating API settings: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/api/clear-db', methods=['POST'])

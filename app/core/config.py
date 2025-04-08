@@ -32,6 +32,10 @@ ENABLE_CHUNKING = os.getenv("ENABLE_CHUNKING", "true").lower() == "true"
 # Web search API key
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
+# LLM API configurations
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_ASSISTANT_IDS = os.getenv("OPENAI_ASSISTANT_IDS", "").split(",") if os.getenv("OPENAI_ASSISTANT_IDS") else []
+
 # Folder to store raw documents
 DOCS_FOLDER = os.getenv("DOCS_FOLDER", "./data")
 
@@ -59,7 +63,9 @@ def get_settings() -> Dict[str, Any]:
         "serper_api_key": SERPER_API_KEY,
         "docs_folder": DOCS_FOLDER,
         "max_retries": MAX_RETRIES,
-        "retry_delay": RETRY_DELAY
+        "retry_delay": RETRY_DELAY,
+        "openai_api_key": OPENAI_API_KEY,
+        "openai_assistant_ids": OPENAI_ASSISTANT_IDS
     }
 
 def log_config() -> None:
@@ -75,3 +81,5 @@ def log_config() -> None:
     logging.info(f"  DOCS_FOLDER: {DOCS_FOLDER}")
     logging.info(f"  Web search enabled: {bool(SERPER_API_KEY)}")
     logging.info(f"  DB Connection: max_retries={MAX_RETRIES}, retry_delay={RETRY_DELAY}s")
+    logging.info(f"  OpenAI integration: {bool(OPENAI_API_KEY)}")
+    logging.info(f"  OpenAI Assistant IDs: {', '.join(OPENAI_ASSISTANT_IDS) if OPENAI_ASSISTANT_IDS else 'Not configured'}")

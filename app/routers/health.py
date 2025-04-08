@@ -4,8 +4,8 @@ Health check router.
 This module provides endpoints for checking system health.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, Body
+from typing import Dict, Any, List
 
 from core.dependencies import (
     get_db_service, 
@@ -13,6 +13,8 @@ from core.dependencies import (
     get_query_classifier,
     get_elasticsearch_service
 )
+from core.config import get_settings
+import os
 
 router = APIRouter(tags=["health"])
 
@@ -105,6 +107,15 @@ async def health_check():
             health_status["ollama"] = f"unhealthy: status code {response.status_code}"
     except Exception as e:
         health_status["ollama"] = f"unhealthy: {str(e)}"
+        
+    # Check OpenAI integration if configured
+    settings = get_settings()
+    if settings.get("openai_api_key"):
+        health_status["openai"] = "configured"
+        if settings.get("openai_assistant_ids"):
+            health_status["openai_assistants"] = settings["openai_assistant_ids"]
+    else:
+        health_status["openai"] = "not configured"
     
     # Test embedding functionality
     if health_status["ollama"] == "healthy":
@@ -127,3 +138,64 @@ async def health_check():
             health_status["models"]["embedding_model"] += f" - error: {str(e)}"
     
     return health_status
+    
+@router.post("/api-settings", summary="Update API settings", description="Update external API configuration")
+async def update_api_settings(settings: Dict[str, Any] = Body(...)):
+    """Update API settings for external services like OpenAI."""
+    current_settings = get_settings()
+    update_success = True
+    update_message = "Settings updated successfully."
+    
+    try:
+        # Handle OpenAI API Key
+        if "openai_api_key" in settings:
+            os.environ["OPENAI_API_KEY"] = settings["openai_api_key"]
+            
+        # Handle OpenAI Assistant IDs
+        if "openai_assistant_ids" in settings:
+            assistant_ids = settings["openai_assistant_ids"]
+            if isinstance(assistant_ids, list):
+                os.environ["OPENAI_ASSISTANT_IDS"] = ",".join(assistant_ids)
+            
+        # Handle Serper API Key (for web search)
+        if "serper_api_key" in settings:
+            os.environ["SERPER_API_KEY"] = settings["serper_api_key"]
+            
+        # Handle Elasticsearch settings
+        if "elasticsearch_enabled" in settings:
+            os.environ["ELASTICSEARCH_ENABLED"] = str(settings["elasticsearch_enabled"]).lower()
+            
+        if "elasticsearch_url" in settings:
+            os.environ["ELASTICSEARCH_URL"] = settings["elasticsearch_url"]
+            
+    except Exception as e:
+        update_success = False
+        update_message = f"Error updating settings: {str(e)}"
+    
+    return {
+        "status": "success" if update_success else "error",
+        "message": update_message
+    }
+
+@router.get("/current-settings", summary="Get current settings", description="Retrieve current API configuration settings")
+async def get_current_settings():
+    """Get current API configuration settings."""
+    settings = get_settings()
+    
+    # Filter out sensitive information
+    filtered_settings = {
+        "elasticsearch_enabled": settings.get("elasticsearch_enabled", False),
+        "elasticsearch_url": settings.get("elasticsearch_url", ""),
+        "has_openai_key": bool(settings.get("openai_api_key")),
+        "openai_assistant_ids": settings.get("openai_assistant_ids", []),
+        "has_serper_key": bool(settings.get("serper_api_key")),
+        "max_chunk_size": settings.get("max_chunk_size", 1000),
+        "min_chunk_size": settings.get("min_chunk_size", 200),
+        "chunk_overlap": settings.get("chunk_overlap", 100),
+        "enable_chunking": settings.get("enable_chunking", True)
+    }
+    
+    return {
+        "status": "success",
+        "settings": filtered_settings
+    }
