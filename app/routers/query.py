@@ -161,26 +161,30 @@ async def chat_query(
             context = ""
             rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": chat_request.web_search or False}
             
+            # Check if this is an OpenAI assistant - if so, skip all RAG processing for local docs
+            if chat_request.model == 'assistant' and chat_request.assistant_id and not chat_request.use_local_docs:
+                logging.info(f"Using OpenAI Assistant without local document retrieval")
+                # For OpenAI assistants without local docs, just pass the query directly without any RAG processing
+                # Since assistant has its own files/retrieval capabilities
             # Only perform RAG if local docs are enabled
-            if chat_request.use_local_docs:
+            elif chat_request.use_local_docs:
                 # Do a regular query to get relevant documents (using Ollama for embeddings)
                 ollama_client = get_ollama_client()
                 
-                if chat_request.web_search or chat_request.check_question_matches:
-                    rag_result = query_service.process_query(
-                        query=latest_message,
-                        n_results=chat_request.n_results,
-                        combine_chunks=chat_request.combine_chunks,
-                        web_search=chat_request.web_search,
-                        web_results_count=chat_request.web_results_count,
-                        explain_classification=False,  # Always false for chat
-                        enhance_query=chat_request.enhance_query,
-                        use_elasticsearch=chat_request.use_elasticsearch,
-                        hybrid_search=chat_request.hybrid_search,
-                        apply_reranking=chat_request.apply_reranking,
-                        check_question_matches=chat_request.check_question_matches,
-                        custom_ollama_client=ollama_client
-                    )
+                rag_result = query_service.process_query(
+                    query=latest_message,
+                    n_results=chat_request.n_results,
+                    combine_chunks=chat_request.combine_chunks,
+                    web_search=chat_request.web_search,
+                    web_results_count=chat_request.web_results_count,
+                    explain_classification=False,  # Always false for chat
+                    enhance_query=chat_request.enhance_query,
+                    use_elasticsearch=chat_request.use_elasticsearch,
+                    hybrid_search=chat_request.hybrid_search,
+                    apply_reranking=chat_request.apply_reranking,
+                    check_question_matches=chat_request.check_question_matches,
+                    custom_ollama_client=ollama_client
+                )
             elif chat_request.web_search:
                 # Only do web search if local docs are disabled but web search is enabled
                 ollama_client = get_ollama_client()
