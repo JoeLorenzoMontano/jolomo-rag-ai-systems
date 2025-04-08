@@ -207,13 +207,15 @@ async def chat_query(
             if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
                 return rag_result
             
-            # Get the context from the RAG result
+            # Get the context from the RAG result - skip for OpenAI assistants without local docs
             context = ""
-            if rag_result.get("sources") and rag_result.get("sources").get("documents"):
-                documents = rag_result.get("sources").get("documents")
-                if documents:
-                    # Combine all retrieved documents as context
-                    context = "\n\n".join(documents)
+            # Only use context for non-assistant models or when local docs are enabled
+            if not (chat_request.model == 'assistant' and chat_request.assistant_id and not chat_request.use_local_docs):
+                if rag_result.get("sources") and rag_result.get("sources").get("documents"):
+                    documents = rag_result.get("sources").get("documents")
+                    if documents:
+                        # Combine all retrieved documents as context
+                        context = "\n\n".join(documents)
             
             # Format the OpenAI messages
             openai_messages = []
@@ -250,8 +252,8 @@ async def chat_query(
                                     content=msg.content
                                 )
                         
-                        # Add context as a user message if available
-                        if context:
+                        # Add context as a user message if available and if using local docs
+                        if context and chat_request.use_local_docs:
                             context_msg = f"Here's some relevant information that might help answer my question:\n\n{context}"
                             openai.beta.threads.messages.create(
                                 thread_id=thread.id,
