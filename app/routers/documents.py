@@ -14,7 +14,13 @@ from core.dependencies import (
     get_job_service
 )
 from core.utils import clean_filename, filter_chunks_by_filename
-from models.schemas import FileUploadResponse, ChunkListResponse, ChunkInfo, DeleteDocumentResponse
+from models.schemas import (
+    FileUploadResponse, 
+    ChunkListResponse, 
+    ChunkInfo, 
+    DeleteDocumentResponse,
+    DocumentProcessingRequest
+)
 
 router = APIRouter(tags=["documents"])
 
@@ -22,11 +28,7 @@ router = APIRouter(tags=["documents"])
             description="Starts processing documents in the background and returns a job ID for tracking progress.")
 async def process_documents(
     background_tasks: BackgroundTasks,
-    chunk_size: int = Query(None, description="Override max chunk size (chars)"),
-    min_size: int = Query(None, description="Override min chunk size (chars)"),
-    overlap: int = Query(None, description="Override chunk overlap (chars)"),
-    enable_chunking: bool = Query(None, description="Override chunking enabled setting"),
-    enhance_chunks: bool = Query(True, description="Generate additional content with Ollama to improve retrieval")
+    request: DocumentProcessingRequest
 ):
     """Start processing all documents in the background."""
     job_service = get_job_service()
@@ -36,11 +38,16 @@ async def process_documents(
     job_id = job_service.create_job(
         job_type="document_processing",
         settings={
-            "chunk_size": chunk_size,
-            "min_size": min_size,
-            "overlap": overlap,
-            "enable_chunking": enable_chunking,
-            "enhance_chunks": enhance_chunks
+            "chunk_size": request.chunk_size,
+            "min_size": request.min_size,
+            "overlap": request.overlap,
+            "enable_chunking": request.enable_chunking,
+            "enhance_chunks": request.enhance_chunks,
+            "generate_questions": request.generate_questions,
+            "max_questions_per_chunk": request.max_questions_per_chunk,
+            "enrichment_model": request.enrichment_model,
+            "questions_model": request.questions_model,
+            "embedding_model": request.embedding_model
         }
     )
     
@@ -48,11 +55,16 @@ async def process_documents(
     background_tasks.add_task(
         document_service.process_documents_task,
         job_id=job_id,
-        chunk_size=chunk_size,
-        min_size=min_size,
-        overlap=overlap,
-        enable_chunking=enable_chunking,
-        enhance_chunks=enhance_chunks
+        chunk_size=request.chunk_size,
+        min_size=request.min_size,
+        overlap=request.overlap,
+        enable_chunking=request.enable_chunking,
+        enhance_chunks=request.enhance_chunks,
+        generate_questions=request.generate_questions,
+        max_questions_per_chunk=request.max_questions_per_chunk,
+        enrichment_model=request.enrichment_model,
+        questions_model=request.questions_model,
+        embedding_model=request.embedding_model
     )
     
     # Return the job ID and initial status
@@ -73,9 +85,12 @@ async def upload_file(
     min_size: Optional[int] = Form(None, description="Override min chunk size (chars)"),
     overlap: Optional[int] = Form(None, description="Override chunk overlap (chars)"),
     enable_chunking: Optional[bool] = Form(None, description="Override chunking enabled setting"),
-    enhance_chunks: Optional[bool] = Form(True, description="Generate additional content with Ollama to improve retrieval"),
+    enhance_chunks: Optional[bool] = Form(True, description="Generate additional content with LLMs to improve retrieval"),
     generate_questions: Optional[bool] = Form(True, description="Generate questions for each chunk"),
-    max_questions_per_chunk: Optional[int] = Form(5, description="Maximum number of questions to generate per chunk")
+    max_questions_per_chunk: Optional[int] = Form(5, description="Maximum number of questions to generate per chunk"),
+    enrichment_model: Optional[str] = Form(None, description="Model to use for semantic enrichment"),
+    questions_model: Optional[str] = Form(None, description="Model to use for question generation"),
+    embedding_model: Optional[str] = Form(None, description="Model to use for embedding generation")
 ):
     """Upload a file for processing."""
     document_service = get_document_service()
@@ -124,7 +139,10 @@ async def upload_file(
                     "enable_chunking": enable_chunking,
                     "enhance_chunks": enhance_chunks,
                     "generate_questions": generate_questions,
-                    "max_questions_per_chunk": max_questions_per_chunk
+                    "max_questions_per_chunk": max_questions_per_chunk,
+                    "enrichment_model": enrichment_model,
+                    "questions_model": questions_model,
+                    "embedding_model": embedding_model
                 }
             )
             
@@ -139,7 +157,10 @@ async def upload_file(
                 enable_chunking=enable_chunking,
                 enhance_chunks=enhance_chunks,
                 generate_questions=generate_questions,
-                max_questions_per_chunk=max_questions_per_chunk
+                max_questions_per_chunk=max_questions_per_chunk,
+                enrichment_model=enrichment_model,
+                questions_model=questions_model,
+                embedding_model=embedding_model
             )
             
             # Add job information to the result

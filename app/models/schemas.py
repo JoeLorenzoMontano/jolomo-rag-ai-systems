@@ -57,6 +57,20 @@ class TermsListResponse(BaseModel):
     terms: List[str] = Field(description="List of domain terms")
 
 
+class DocumentProcessingRequest(BaseModel):
+    """Schema for document processing request."""
+    chunk_size: Optional[int] = Field(None, description="Override max chunk size (chars)")
+    min_size: Optional[int] = Field(None, description="Override min chunk size (chars)")
+    overlap: Optional[int] = Field(None, description="Override chunk overlap (chars)")
+    enable_chunking: Optional[bool] = Field(None, description="Override chunking enabled setting")
+    enhance_chunks: bool = Field(True, description="Generate additional content with LLMs to improve retrieval")
+    generate_questions: Optional[bool] = Field(True, description="Generate questions for each chunk")
+    max_questions_per_chunk: Optional[int] = Field(5, description="Maximum number of questions to generate per chunk")
+    enrichment_model: Optional[str] = Field(None, description="Model to use for semantic enrichment")
+    questions_model: Optional[str] = Field(None, description="Model to use for question generation")
+    embedding_model: Optional[str] = Field(None, description="Model to use for embedding generation")
+
+
 class FileUploadResponse(BaseModel):
     """Response schema for file uploads."""
     status: str = Field(description="Status of the upload")

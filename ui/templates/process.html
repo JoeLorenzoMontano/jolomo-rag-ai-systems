@@ -53,6 +53,15 @@
                                         <div class="form-text">Overlap between adjacent chunks</div>
                                     </div>
                                 </div>
+                                
+                                <div class="mb-3">
+                                    <label for="embedding-model" class="form-label">Embedding Model</label>
+                                    <select class="form-select" id="embedding-model">
+                                        <option value="" selected>Default Model</option>
+                                        <!-- Models will be loaded dynamically -->
+                                    </select>
+                                    <div class="form-text">Select a model to use for generating embeddings</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -64,8 +73,16 @@
                                 <input class="form-check-input" type="checkbox" id="enable-enrichment" checked>
                                 <label class="form-check-label" for="enable-enrichment">Enable Semantic Enrichment</label>
                             </div>
+                            <div id="enrichment-settings" class="mb-3">
+                                <label for="enrichment-model" class="form-label">Enrichment Model</label>
+                                <select class="form-select" id="enrichment-model">
+                                    <option value="" selected>Default Model</option>
+                                    <!-- Models will be loaded dynamically -->
+                                </select>
+                                <div class="form-text">Select a model to use for generating semantic enrichment</div>
+                            </div>
                             <p class="text-muted small mb-0">
-                                When enabled, Ollama will generate additional content for each chunk, including key concepts, synonyms, 
+                                When enabled, the LLM will generate additional content for each chunk, including key concepts, synonyms, 
                                 and related topics to enhance retrieval quality. This makes documents easier to find with natural language queries.
                             </p>
                         </div>
@@ -84,9 +101,17 @@
                                     <input type="number" class="form-control" id="max-questions" value="5" min="1" max="10">
                                     <div class="form-text">Maximum number of questions to generate for each chunk</div>
                                 </div>
+                                <div class="mb-3">
+                                    <label for="questions-model" class="form-label">Question Generation Model</label>
+                                    <select class="form-select" id="questions-model">
+                                        <option value="" selected>Default Model</option>
+                                        <!-- Models will be loaded dynamically -->
+                                    </select>
+                                    <div class="form-text">Select a model to use for generating questions</div>
+                                </div>
                             </div>
                             <p class="text-muted small mb-0">
-                                When enabled, Ollama will generate potential questions that can be answered by each chunk.
+                                When enabled, the selected LLM will generate potential questions that can be answered by each chunk.
                                 This helps match user queries directly to pre-generated Q&A pairs for improved response accuracy.
                             </p>
                         </div>
@@ -897,6 +922,61 @@
                 }
             });
             
+            // Load available models
+            async function loadAvailableModels() {
+                try {
+                    const response = await fetch('/api/models');
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'success' && data.models && data.models.length > 0) {
+                            // Populate model dropdowns
+                            const enrichmentModel = document.getElementById('enrichment-model');
+                            const questionsModel = document.getElementById('questions-model');
+                            const embeddingModel = document.getElementById('embedding-model');
+                            
+                            // Clear existing options except the first one
+                            while (enrichmentModel.options.length > 1) {
+                                enrichmentModel.remove(1);
+                            }
+                            while (questionsModel.options.length > 1) {
+                                questionsModel.remove(1);
+                            }
+                            while (embeddingModel.options.length > 1) {
+                                embeddingModel.remove(1);
+                            }
+                            
+                            // Add models to the dropdowns
+                            data.models.forEach(model => {
+                                // Skip embedding models for text generation dropdowns
+                                if (model.includes('all-minilm') || model.includes('embed')) {
+                                    // Add only to embedding dropdown
+                                    const option = document.createElement('option');
+                                    option.value = model;
+                                    option.text = model;
+                                    embeddingModel.appendChild(option);
+                                } else {
+                                    // Add to text generation dropdowns
+                                    const option1 = document.createElement('option');
+                                    option1.value = model;
+                                    option1.text = model;
+                                    enrichmentModel.appendChild(option1.cloneNode(true));
+                                    
+                                    const option2 = document.createElement('option');
+                                    option2.value = model;
+                                    option2.text = model;
+                                    questionsModel.appendChild(option2);
+                                }
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading models:', error);
+                }
+            }
+            
+            // Load models when the page loads
+            loadAvailableModels();
+            
             // Process form submission
             processForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -917,6 +997,9 @@
                 const enableEnrichment = document.getElementById('enable-enrichment').checked;
                 const enableQuestions = enableQuestionsSwitch.checked;
                 const maxQuestions = document.getElementById('max-questions').value;
+                const enrichmentModel = document.getElementById('enrichment-model').value;
+                const questionsModel = document.getElementById('questions-model').value;
+                const embeddingModel = document.getElementById('embedding-model').value;
                 
                 // Create form data
                 const formData = new FormData();
@@ -927,6 +1010,9 @@
                 formData.append('enhance_chunks', enableEnrichment);
                 formData.append('generate_questions', enableQuestions);
                 formData.append('max_questions_per_chunk', maxQuestions);
+                formData.append('enrichment_model', enrichmentModel);
+                formData.append('questions_model', questionsModel);
+                formData.append('embedding_model', embeddingModel);
                 
                 try {
                     // Send request to start processing

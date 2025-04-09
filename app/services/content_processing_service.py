@@ -88,7 +88,10 @@ class ContentProcessingService:
                               enable_chunking: Optional[bool] = None,
                               enhance_chunks: bool = True,
                               generate_questions: Optional[bool] = None,
-                              max_questions_per_chunk: Optional[int] = None) -> None:
+                              max_questions_per_chunk: Optional[int] = None,
+                              enrichment_model: Optional[str] = None,
+                              questions_model: Optional[str] = None,
+                              embedding_model: Optional[str] = None) -> None:
         """
         Process all documents in the docs folder as a background task.
         
@@ -147,7 +150,10 @@ class ContentProcessingService:
                 temp_enable_chunking,
                 enhance_chunks,
                 temp_generate_questions,
-                temp_max_questions_per_chunk
+                temp_max_questions_per_chunk,
+                enrichment_model,
+                questions_model,
+                embedding_model
             )
             
             # Update total files count
@@ -241,7 +247,10 @@ class ContentProcessingService:
                           max_chunk_size: int, min_chunk_size: int, 
                           chunk_overlap: int, enable_chunking: bool,
                           enhance_chunks: bool, generate_questions: bool = False,
-                          max_questions_per_chunk: int = 5) -> Tuple[List[str], List[str], List[str], int, int, List[str]]:
+                          max_questions_per_chunk: int = 5,
+                          enrichment_model: Optional[str] = None,
+                          questions_model: Optional[str] = None,
+                          embedding_model: Optional[str] = None) -> Tuple[List[str], List[str], List[str], int, int, List[str]]:
         """
         Process files in a directory recursively.
         
@@ -300,7 +309,8 @@ class ContentProcessingService:
                         file_successful, file_failed = self._process_chunks(
                             chunk_list, all_chunks, all_chunk_ids, job_id, 
                             enhance_chunks, failed_files, generate_questions,
-                            max_questions_per_chunk
+                            max_questions_per_chunk, enrichment_model,
+                            questions_model, embedding_model
                         )
                         
                         successful += file_successful
@@ -328,7 +338,10 @@ class ContentProcessingService:
                       job_id: str, enhance_chunks: bool, 
                       failed_files: List[str],
                       generate_questions: bool = False,
-                      max_questions_per_chunk: int = 5) -> Tuple[int, int]:
+                      max_questions_per_chunk: int = 5,
+                      enrichment_model: Optional[str] = None,
+                      questions_model: Optional[str] = None,
+                      embedding_model: Optional[str] = None) -> Tuple[int, int]:
         """
         Process and embed a list of document chunks.
         
@@ -379,7 +392,18 @@ class ContentProcessingService:
                             next_chunk_text = chunk_list[i+1][0]
                             
                         # Generate context-aware summary
-                        enrichment = self.ollama_client.generate_semantic_enrichment(
+                        # Create a temporary client with custom model if specified
+                        if enrichment_model:
+                            temp_client = OllamaClient(
+                                model=enrichment_model,
+                                base_url=self.ollama_client.base_url
+                            )
+                            self.logger.info(f"Job {job_id}: Using custom model {enrichment_model} for enrichment of {chunk_id}")
+                            current_client = temp_client
+                        else:
+                            current_client = self.ollama_client
+                            
+                        enrichment = current_client.generate_semantic_enrichment(
                             chunk_text, 
                             chunk_id,
                             prev_chunk_text,
@@ -404,7 +428,19 @@ class ContentProcessingService:
                     try:
                         # Generate questions and answers
                         self.logger.info(f"Job {job_id}: Generating questions for chunk {chunk_id}")
-                        questions_answers = self.ollama_client.generate_questions_from_chunk(
+                        
+                        # Create a temporary client with custom model if specified
+                        if questions_model:
+                            temp_client = OllamaClient(
+                                model=questions_model,
+                                base_url=self.ollama_client.base_url
+                            )
+                            self.logger.info(f"Job {job_id}: Using custom model {questions_model} for question generation of {chunk_id}")
+                            current_client = temp_client
+                        else:
+                            current_client = self.ollama_client
+                            
+                        questions_answers = current_client.generate_questions_from_chunk(
                             chunk_text, 
                             chunk_id,
                             max_questions_per_chunk
@@ -428,7 +464,18 @@ class ContentProcessingService:
                     metadata["has_questions"] = False
                 
                 # Generate embedding
-                embedding = self.ollama_client.generate_embedding(processing_text)
+                # Create a temporary client with custom model if specified
+                if embedding_model:
+                    temp_client = OllamaClient(
+                        embedding_model=embedding_model,
+                        base_url=self.ollama_client.base_url
+                    )
+                    self.logger.info(f"Job {job_id}: Using custom model {embedding_model} for embedding of {chunk_id}")
+                    current_client = temp_client
+                else:
+                    current_client = self.ollama_client
+                    
+                embedding = current_client.generate_embedding(processing_text)
                 
                 # Add file information to metadata
                 if "#chunk-" in chunk_id:
@@ -478,7 +525,10 @@ class ContentProcessingService:
                              enable_chunking: Optional[bool] = None,
                              enhance_chunks: bool = True,
                              generate_questions: Optional[bool] = None,
-                             max_questions_per_chunk: Optional[int] = None) -> None:
+                             max_questions_per_chunk: Optional[int] = None,
+                             enrichment_model: Optional[str] = None,
+                             questions_model: Optional[str] = None,
+                             embedding_model: Optional[str] = None) -> None:
         """
         Process a single uploaded file as a background task.
         
@@ -600,8 +650,19 @@ class ContentProcessingService:
                             if i < len(chunk_pairs) - 1:
                                 next_chunk_text = chunk_pairs[i+1][0]
                             
+                            # Create a temporary client with custom model if specified
+                            if enrichment_model:
+                                temp_client = OllamaClient(
+                                    model=enrichment_model,
+                                    base_url=self.ollama_client.base_url
+                                )
+                                self.logger.info(f"Job {job_id}: Using custom model {enrichment_model} for enrichment of {chunk_id}")
+                                current_client = temp_client
+                            else:
+                                current_client = self.ollama_client
+                                
                             # Generate enrichment with context
-                            enrichment = self.ollama_client.generate_semantic_enrichment(
+                            enrichment = current_client.generate_semantic_enrichment(
                                 chunk_text, 
                                 chunk_id,
                                 prev_chunk_text,
@@ -639,7 +700,19 @@ class ContentProcessingService:
                         try:
                             # Generate questions and answers
                             self.logger.info(f"Job {job_id}: Generating questions for chunk {chunk_id}")
-                            questions_answers = self.ollama_client.generate_questions_from_chunk(
+                            
+                            # Create a temporary client with custom model if specified
+                            if questions_model:
+                                temp_client = OllamaClient(
+                                    model=questions_model,
+                                    base_url=self.ollama_client.base_url
+                                )
+                                self.logger.info(f"Job {job_id}: Using custom model {questions_model} for question generation of {chunk_id}")
+                                current_client = temp_client
+                            else:
+                                current_client = self.ollama_client
+                                
+                            questions_answers = current_client.generate_questions_from_chunk(
                                 chunk_text, 
                                 chunk_id,
                                 temp_max_questions
@@ -664,7 +737,19 @@ class ContentProcessingService:
                     
                     # Generate embedding
                     self.logger.info(f"Job {job_id}: Processing chunk {i+1}/{len(all_chunks)}")
-                    embedding = self.ollama_client.generate_embedding(processing_text)
+                    
+                    # Create a temporary client with custom model if specified
+                    if embedding_model:
+                        temp_client = OllamaClient(
+                            embedding_model=embedding_model,
+                            base_url=self.ollama_client.base_url
+                        )
+                        self.logger.info(f"Job {job_id}: Using custom model {embedding_model} for embedding of {chunk_id}")
+                        current_client = temp_client
+                    else:
+                        current_client = self.ollama_client
+                        
+                    embedding = current_client.generate_embedding(processing_text)
                     
                     # Add file information to metadata
                     if "#chunk-" in all_chunk_ids[i]:
