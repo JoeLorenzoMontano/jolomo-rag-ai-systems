@@ -160,9 +160,9 @@ async def chat_query(
         # Initialize with empty context and sources
         rag_result = {"status": "success", "sources": {"documents": [], "ids": [], "metadatas": []}, "web_search_used": False}
         
-        # Only do web search if specifically requested
+        # Only do web search if explicitly set to True (not None or False)
         web_results = None
-        if chat_request.web_search:
+        if chat_request.web_search is True:  # Explicitly check for True to handle None case
             logging.info(f"Performing web search only for OpenAI Assistant")
             try:
                 web_search_client = get_web_search_client()
@@ -175,6 +175,8 @@ async def chat_query(
                     logging.warning("Web search client not available - SERPER_API_KEY might be missing")
             except Exception as e:
                 logging.error(f"Error during web search for OpenAI Assistant: {e}")
+        else:
+            logging.info("Web search disabled for OpenAI Assistant fast path")
                 
         # Direct OpenAI assistant call, skipping all embedding generation and RAG
         try:
@@ -311,14 +313,15 @@ async def chat_query(
                     "source_type": "documents",
                     "web_search_used": False
                 }
-        elif chat_request.web_search:
+        elif chat_request.web_search is True:  # Explicitly check for True to handle None case
             # Web search only with no document retrieval
+            logging.info("Using web search only with no document retrieval")
             try:
                 rag_result = query_service.process_query(
                     query=latest_message,
-                    n_results=0,
+                    n_results=0,  # Skip document retrieval
                     combine_chunks=False,
-                    web_search=True,
+                    web_search=True,  # Force web search to be True
                     web_results_count=chat_request.web_results_count,
                     explain_classification=False,
                     enhance_query=chat_request.enhance_query,
@@ -338,7 +341,12 @@ async def chat_query(
                 }
         else:
             # No document retrieval, no web search
-            logging.info("Skipping all document retrieval as requested")
+            logging.info("Skipping all document retrieval and web search as requested")
+            rag_result = {
+                "status": "success",
+                "sources": {"documents": [], "ids": [], "metadatas": []},
+                "web_search_used": False
+            }
         
         # Check if RAG result indicates an error
         if rag_result.get("status") == "error" or rag_result.get("status") == "not_found":
