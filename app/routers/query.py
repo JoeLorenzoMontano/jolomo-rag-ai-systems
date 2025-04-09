@@ -10,7 +10,7 @@ import logging
 import os
 import requests
 
-from core.dependencies import get_query_service, get_ollama_client
+from core.dependencies import get_query_service, get_ollama_client, get_web_search_client
 from core.config import get_settings
 from models.schemas import ChatMessage, ChatRequest
 from utils.ollama_client import OllamaClient
@@ -165,12 +165,14 @@ async def chat_query(
         if chat_request.web_search:
             logging.info(f"Performing web search only for OpenAI Assistant")
             try:
-                from utils.web_search import WebSearchClient
-                web_search_client = WebSearchClient()
-                web_results = web_search_client.search_with_serper(latest_message, num_results=chat_request.web_results_count)
-                if web_results:
-                    rag_result["sources"]["web_results"] = web_results
-                    rag_result["web_search_used"] = True
+                web_search_client = get_web_search_client()
+                if web_search_client:
+                    web_results = web_search_client.search_with_serper(latest_message, num_results=chat_request.web_results_count)
+                    if web_results:
+                        rag_result["sources"]["web_results"] = web_results
+                        rag_result["web_search_used"] = True
+                else:
+                    logging.warning("Web search client not available - SERPER_API_KEY might be missing")
             except Exception as e:
                 logging.error(f"Error during web search for OpenAI Assistant: {e}")
                 
@@ -193,7 +195,7 @@ async def chat_query(
             
             # Add web search results if available
             if web_results:
-                web_results_text = WebSearchClient().format_results_as_context(web_results)
+                web_results_text = web_search_client.format_results_as_context(web_results)
                 web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
                 openai.beta.threads.messages.create(
                     thread_id=thread.id,
@@ -380,7 +382,7 @@ async def chat_query(
                     # Add web search results if available
                     if rag_result.get("web_search_used") and rag_result.get("sources", {}).get("web_results"):
                         web_results = rag_result["sources"]["web_results"]
-                        web_results_text = WebSearchClient().format_results_as_context(web_results)
+                        web_results_text = web_search_client.format_results_as_context(web_results)
                         web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
                         openai.beta.threads.messages.create(
                             thread_id=thread.id,
