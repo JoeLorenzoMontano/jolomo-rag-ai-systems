@@ -84,8 +84,10 @@ class Reranker:
             
             # Generate new distances where lower values (closer to 0) are better
             # by inverting and normalizing the scores
-            max_score = max(scores) if scores else 1.0
-            reranked_distances = [1.0 - (item['score'] / max_score) for item in sorted_items]
+            # Convert scores to a list if it's a numpy array to avoid comparison issues
+            scores_list = scores.tolist() if isinstance(scores, np.ndarray) else scores
+            max_score = max(scores_list) if scores_list else 1.0
+            reranked_distances = [1.0 - (float(item['score']) / max_score) for item in sorted_items]
             
             self.logger.info(f"Reranked {len(documents)} documents for query: '{query}'")
             
@@ -151,8 +153,10 @@ class Reranker:
             reranked_docs, reranked_ids, reranked_metadatas, reranked_scores = zip(*sorted_pairs) if sorted_pairs else ([], [], [], [])
             
             # Convert BM25 scores to distances (lower is better)
-            max_score = max(reranked_scores) if reranked_scores else 1.0
-            reranked_distances = [1.0 - (score / max_score) for score in reranked_scores]
+            # Convert to list if it's a numpy array to avoid comparison issues
+            scores_list = reranked_scores.tolist() if isinstance(reranked_scores, np.ndarray) else reranked_scores
+            max_score = max(scores_list) if scores_list else 1.0
+            reranked_distances = [1.0 - (float(score) / max_score) for score in reranked_scores]
             
             self.logger.info(f"Fallback reranked {len(documents)} documents using BM25")
             

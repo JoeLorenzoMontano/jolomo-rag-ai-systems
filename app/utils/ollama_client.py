@@ -27,7 +27,7 @@ class OllamaClient:
         current_model = model or self.model
         
         # Check if the model exists, if not pull it
-        self._ensure_model_exists(current_model)
+        current_model = self._ensure_model_exists(current_model)
         
         payload = {
             "model": current_model,
@@ -55,10 +55,23 @@ class OllamaClient:
         result = response.json()
         return self._remove_think_regions(result.get("response", "No response generated."))
 
-    def _ensure_model_exists(self, model_name: str) -> None:
+    def _ensure_model_exists(self, model_name: str) -> str:
         """
         Checks if a model exists, and tries to use a default model if it doesn't.
+        
+        Args:
+            model_name: Name of the model to check
+            
+        Returns:
+            Name of the model to use (original or fallback)
         """
+        # Skip model check for OpenAI models
+        if model_name.startswith(('gpt-', 'text-')) or 'gpt' in model_name.lower():
+            print(f"Model {model_name} not available in Ollama.")
+            available_fallback = self.embedding_model or "all-minilm:l6-v2"
+            print(f"Using {available_fallback} as fallback.")
+            return available_fallback
+            
         try:
             # Check if model exists
             response = requests.get(f"{self.base_url}/api/tags")
@@ -82,14 +95,22 @@ class OllamaClient:
                 print(f"Model {model_name} not available.")
                 if models:
                     # Use first available model as fallback
-                    self.model = models[0]["name"]
-                    print(f"Using {self.model} as fallback.")
+                    fallback_model = models[0]["name"]
+                    print(f"Using {fallback_model} as fallback.")
+                    return fallback_model
                 else:
                     print(f"No models available. Will attempt to pull llama2 when needed.")
-                    self.model = "llama2"
+                    return "llama2"
+            
+            # If model exists, return the original model name
+            return model_name
+                
         except Exception as e:
             print(f"Error checking available models: {e}")
             print("Will use default model settings and let Ollama handle errors.")
+            
+            # Return the embedding model as a fallback or the input model
+            return self.embedding_model or model_name
     
     def get_available_models(self) -> List[Dict[str, Any]]:
         """
@@ -186,7 +207,7 @@ class OllamaClient:
         current_model = model or self.model
         
         # Check if the model exists, if not pull it
-        self._ensure_model_exists(current_model)
+        current_model = self._ensure_model_exists(current_model)
         
         # Create a copy of messages to avoid modifying the original
         chat_messages = list(messages)
@@ -267,9 +288,10 @@ class OllamaClient:
             IMPORTANT: Your complete response must be ONLY the enhanced search query with no other text.
             """
             
-            # Use a fast response with the current model
+            # Use a fast response with the current model - ensure it exists
+            model_to_use = self._ensure_model_exists(self.model)
             payload = {
-                "model": self.model,
+                "model": model_to_use,
                 "prompt": prompt,
                 "stream": False,
                 "options": {"temperature": 0.1}  # Low temperature for deterministic results
@@ -331,8 +353,7 @@ class OllamaClient:
             Contextual summary that can be added to the original for better matching
         """
         # Check if the model exists, if not pull it
-        current_model = self.model
-        self._ensure_model_exists(current_model)
+        current_model = self._ensure_model_exists(self.model)
         
         # Set up context sections based on what's available
         context_parts = []
@@ -468,8 +489,7 @@ class OllamaClient:
             List of dictionaries with question/answer pairs
         """
         # Check if the model exists, if not pull it
-        current_model = self.model
-        self._ensure_model_exists(current_model)
+        current_model = self._ensure_model_exists(self.model)
         
         # Prompt to generate questions and answers
         prompt = f"""You are an expert at generating high-quality questions and answers from documents.
