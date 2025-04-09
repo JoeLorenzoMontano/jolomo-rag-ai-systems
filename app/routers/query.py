@@ -356,6 +356,9 @@ async def chat_query(
             openai.api_key = settings.get("openai_api_key")
             
             if is_openai_assistant:
+                # Get web search client for formatting
+                web_search_client = get_web_search_client()
+                
                 # OpenAI Assistant API
                 try:
                     # Create a thread
@@ -382,13 +385,14 @@ async def chat_query(
                     # Add web search results if available
                     if rag_result.get("web_search_used") and rag_result.get("sources", {}).get("web_results"):
                         web_results = rag_result["sources"]["web_results"]
-                        web_results_text = web_search_client.format_results_as_context(web_results)
-                        web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
-                        openai.beta.threads.messages.create(
-                            thread_id=thread.id,
-                            role="user",
-                            content=web_context_msg
-                        )
+                        if web_search_client:
+                            web_results_text = web_search_client.format_results_as_context(web_results)
+                            web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
+                            openai.beta.threads.messages.create(
+                                thread_id=thread.id,
+                                role="user",
+                                content=web_context_msg
+                            )
                     
                     # Run the assistant on the thread
                     run = openai.beta.threads.runs.create(

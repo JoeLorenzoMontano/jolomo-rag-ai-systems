@@ -81,16 +81,21 @@ class QueryService:
             Dictionary with query response and sources
         """
         try:
-            # Check if ChromaDB has any documents at all
-            doc_count = self.db_service.get_document_count()
-            if doc_count == 0:
-                return {
-                    "query": query,
-                    "response": "No documents have been processed yet. Please use the /process endpoint first.",
-                    "sources": {"documents": [], "ids": [], "metadatas": []},
-                    "status": "error",
-                    "error": "Empty collection"
-                }
+            # Skip document database checks if n_results is 0 (web search only mode)
+            if n_results <= 0:
+                self.logger.info("Skipping document retrieval as n_results is 0 or negative (web search only mode)")
+                results = None
+            else:
+                # Check if ChromaDB has any documents at all
+                doc_count = self.db_service.get_document_count()
+                if doc_count == 0:
+                    return {
+                        "query": query,
+                        "response": "No documents have been processed yet. Please use the /process endpoint first.",
+                        "sources": {"documents": [], "ids": [], "metadatas": []},
+                        "status": "error",
+                        "error": "Empty collection"
+                    }
             
             # Store the original query for response
             original_query = query
@@ -288,28 +293,39 @@ class QueryService:
                     # Re-raise other exceptions
                     raise
             
-            # Handle the case where no documents are found
-            if not results["documents"] or len(results["documents"][0]) == 0:
-                return {
-                    "query": query,
-                    "response": "No relevant documents found in the database.",
-                    "sources": {"documents": [], "ids": [], "metadatas": []},
-                    "status": "not_found"
-                }
+            # Handle the case where no documents are found or document retrieval was skipped
+            if results is None or not results.get("documents") or len(results.get("documents", [[]])[0]) == 0:
+                # If we're in web search only mode (n_results <= 0), continue without documents
+                if n_results <= 0:
+                    self.logger.info("Using web search only mode with no document retrieval")
+                    # Initialize empty results structure
+                    docs = []
+                    ids = []
+                    metadatas = []
+                    distances = []
+                else:
+                    # Otherwise, return not found response
+                    return {
+                        "query": query,
+                        "response": "No relevant documents found in the database.",
+                        "sources": {"documents": [], "ids": [], "metadatas": []},
+                        "status": "not_found"
+                    }
             
-            # Prepare document data
-            docs = results["documents"][0]
-            ids = results["ids"][0]
-            metadatas = results["metadatas"][0] if "metadatas" in results else [{}] * len(ids)
-            distances = results["distances"][0] if "distances" in results else [0] * len(ids)
+            # Prepare document data if we haven't already set them in the web search only mode
+            if n_results > 0:
+                docs = results["documents"][0]
+                ids = results["ids"][0]
+                metadatas = results["metadatas"][0] if "metadatas" in results else [{}] * len(ids)
+                distances = results["distances"][0] if "distances" in results else [0] * len(ids)
             
-            # Combine chunks from the same document if requested
-            if combine_chunks:
+            # Combine chunks from the same document if requested and we have documents
+            if combine_chunks and n_results > 0 and docs and len(docs) > 0:
                 docs, ids, metadatas, distances = self._combine_chunks(docs, ids, metadatas, distances, n_results)
             
-            # Apply reranking if enabled
+            # Apply reranking if enabled and we have multiple documents
             reranked = False
-            if apply_reranking and len(docs) > 1:
+            if apply_reranking and n_results > 0 and docs and len(docs) > 1:
                 try:
                     self.logger.info(f"Applying reranking to {len(docs)} documents")
                     reranked_docs, reranked_ids, reranked_metadatas, reranked_distances = self.reranker.rerank(
@@ -355,11 +371,11 @@ class QueryService:
             # Get the best matching document (first result)
             best_match = docs[0] if docs else ""
             
-            # Check for question matches if enabled
+            # Check for question matches if enabled and we have documents
             question_matches = []
             exact_question_match = None
             
-            if check_question_matches and docs and metadatas:
+            if check_question_matches and n_results > 0 and docs and len(docs) > 0 and metadatas and len(metadatas) > 0:
                 try:
                     self.logger.info("Checking for matches with pre-generated questions")
                     question_matches, exact_question_match = self._find_matching_questions(query, metadatas, docs, ollama_client)
@@ -372,23 +388,27 @@ class QueryService:
                 except Exception as e:
                     self.logger.warning(f"Error during question matching: {e}")
             
-            # Generate a response based on the best match using Ollama
-            context = best_match
-            context_source = "vector_search"
+            # Generate a response based on the best match using Ollama (or start with empty context for web-only mode)
+            context = ""
+            context_source = "web_search_only" if n_results <= 0 else "vector_search"
             
-            # If we have an exact question match, use the associated answer as context
-            if exact_question_match and 'answer' in exact_question_match:
-                context = exact_question_match['answer']
+            # Only set context from documents if we have documents
+            if n_results > 0 and docs and len(docs) > 0:
+                context = best_match
                 
-                # Add the chunk from which the question/answer came as additional context
-                if 'chunk_text' in exact_question_match and exact_question_match['chunk_text']:
-                    context = f"{context}\n\nAdditional context from document:\n{exact_question_match['chunk_text']}"
-                
-                context_source = "exact_question_match"
-                self.logger.info(f"Using exact question match answer as context")
-            # If the context is too short and we have multiple results, add more context
-            elif len(context.split()) < 100 and len(docs) > 1:
-                context = docs[0] + "\n\n" + docs[1]
+                # If we have an exact question match, use the associated answer as context
+                if exact_question_match and 'answer' in exact_question_match:
+                    context = exact_question_match['answer']
+                    
+                    # Add the chunk from which the question/answer came as additional context
+                    if 'chunk_text' in exact_question_match and exact_question_match['chunk_text']:
+                        context = f"{context}\n\nAdditional context from document:\n{exact_question_match['chunk_text']}"
+                    
+                    context_source = "exact_question_match"
+                    self.logger.info(f"Using exact question match answer as context")
+                # If the context is too short and we have multiple results, add more context
+                elif len(context.split()) < 100 and len(docs) > 1:
+                    context = docs[0] + "\n\n" + docs[1]
             
             # Classify the query to determine if we should use web search
             source_type = "documents"
