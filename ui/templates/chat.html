@@ -165,6 +165,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/models.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sources.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/openai.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const chatMessages = document.getElementById('chat-messages');
@@ -190,42 +194,13 @@
                 const selectedModel = modelSelector.value;
                 
                 // If this is an OpenAI assistant, automatically disable local docs
-                if (selectedModel.startsWith('assistant_')) {
+                if (OpenAI.isAssistant(selectedModel)) {
                     localDocsToggle.checked = false;
                 }
             });
             
-            // Load available assistant IDs from the server
-            async function loadAssistantOptions() {
-                try {
-                    const response = await fetch('/api/settings');
-                    const data = await response.json();
-                    
-                    if (data.status === 'success' && data.settings && data.settings.openai_assistant_ids) {
-                        const assistantIds = data.settings.openai_assistant_ids;
-                        if (assistantIds && assistantIds.length > 0) {
-                            // Add a divider
-                            const divider = document.createElement('option');
-                            divider.disabled = true;
-                            divider.textContent = '───── Assistants ─────';
-                            modelSelector.appendChild(divider);
-                            
-                            // Add an option for each assistant ID
-                            assistantIds.forEach((assistantId, index) => {
-                                const option = document.createElement('option');
-                                option.value = `assistant_${assistantId}`;
-                                option.textContent = `Assistant ${index + 1} (${assistantId.substring(0, 8)}...)`;
-                                modelSelector.appendChild(option);
-                            });
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error loading assistant options:', error);
-                }
-            }
-            
-            // Load assistant options when the page loads
-            loadAssistantOptions();
+            // Initialize the model selector
+            Models.populateChatModelSelector(modelSelector);
             
             // Auto-resize textarea as user types
             chatInput.addEventListener('input', function() {
@@ -279,57 +254,26 @@
                     // Get selected model
                     const selectedModel = modelSelector.value;
                     
-                    // Determine model parameters based on selection
-                    let queryModel = null;
-                    let useOpenAI = false;
-                    let assistantId = null;
+                    // Get model parameters using our Models utility
+                    const modelParams = Models.getModelParameters(selectedModel);
                     
-                    if (selectedModel.startsWith('assistant_')) {
-                        // This is an assistant ID
-                        useOpenAI = true;
-                        queryModel = 'assistant';
-                        assistantId = selectedModel.substring('assistant_'.length);
-                    } else {
-                        switch(selectedModel) {
-                            case 'openai_gpt4':
-                                useOpenAI = true;
-                                queryModel = 'gpt-4';
-                                break;
-                            case 'openai_gpt35':
-                                useOpenAI = true;
-                                queryModel = 'gpt-3.5-turbo';
-                                break;
-                            default:
-                                // Use default Ollama model
-                                queryModel = null;
-                        }
-                    }
+                    // Prepare query options
+                    const queryOptions = {
+                        n_results: 3,
+                        combine_chunks: true,
+                        enhance_query: false,
+                        web_search: webSearchToggle.checked,
+                        use_local_docs: localDocsToggle.checked,
+                        use_elasticsearch: null, // Auto-determine
+                        hybrid_search: true,
+                        web_results_count: 3,
+                        apply_reranking: true,
+                        check_question_matches: true,
+                        ...modelParams // Spread in the model parameters (model, use_openai, assistant_id)
+                    };
                     
-                    // Call the API with full conversation history
-                    const response = await fetch('/chat-query', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            messages: conversationHistory,
-                            n_results: 3,
-                            combine_chunks: true,
-                            enhance_query: false,
-                            web_search: webSearchToggle.checked, // Use the web search toggle setting
-                            use_local_docs: localDocsToggle.checked, // Use the local docs toggle setting
-                            use_elasticsearch: null, // Auto-determine
-                            hybrid_search: true, // Use hybrid search for better results
-                            web_results_count: 3,
-                            apply_reranking: true, // Enable reranking for better results
-                            check_question_matches: true, // Enable question matching feature
-                            model: queryModel,
-                            use_openai: useOpenAI,
-                            assistant_id: assistantId // Pass the assistant ID if one was selected
-                        })
-                    });
-                    
-                    const data = await response.json();
+                    // Send chat query using our API utility
+                    const data = await API.sendChatQuery(conversationHistory, queryOptions);
                     
                     // Hide typing indicator
                     typingIndicator.style.display = 'none';
@@ -404,34 +348,15 @@
                 
                 // Add sources if available
                 if (sources && sources.length > 0) {
-                    const sourcesToggle = document.createElement('div');
-                    sourcesToggle.className = 'sources-toggle';
-                    sourcesToggle.innerHTML = `<i class="bi bi-info-circle"></i> Show sources (${sources.length})`;
-                    
                     const sourcesList = document.createElement('div');
                     sourcesList.className = 'sources-list';
                     
-                    // Create the sources list
-                    const sourceItems = sources.map(source => {
-                        if (source.type === 'web' && source.url) {
-                            return `<li><a href="${source.url}" target="_blank">${source.title}</a> <span class="badge bg-warning text-dark">Web</span></li>`;
-                        } else {
-                            return `<li>${source.title} <span class="badge bg-info">Document</span></li>`;
-                        }
-                    });
+                    // Create the sources list using our Sources utility
+                    Sources.renderSources({ sources: { documents: [], web_results: [] } }, sourcesList);
                     
-                    sourcesList.innerHTML = `<ol>${sourceItems.join('')}</ol>`;
+                    // Create a sources toggle using our Sources utility
+                    Sources.createSourcesToggle(messageDiv, sources, sourcesList);
                     
-                    // Toggle sources visibility
-                    sourcesToggle.addEventListener('click', () => {
-                        const isVisible = sourcesList.style.display === 'block';
-                        sourcesList.style.display = isVisible ? 'none' : 'block';
-                        sourcesToggle.innerHTML = isVisible 
-                            ? `<i class="bi bi-info-circle"></i> Show sources (${sources.length})` 
-                            : `<i class="bi bi-info-circle-fill"></i> Hide sources`;
-                    });
-                    
-                    messageDiv.appendChild(sourcesToggle);
                     messageDiv.appendChild(sourcesList);
                 }
                 

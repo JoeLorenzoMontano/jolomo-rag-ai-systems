@@ -166,6 +166,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/openai.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // Elements
@@ -266,28 +268,27 @@
             // Load current settings from API
             async function loadCurrentSettings() {
                 try {
-                    const response = await fetch('/api/settings');
-                    const data = await response.json();
+                    const settings = await API.getSettings();
                     
-                    if (data.status === 'success' && data.settings) {
-                        const settings = data.settings;
+                    if (settings.status === 'success' && settings.settings) {
+                        const settingsData = settings.settings;
                         
                         // Update form fields based on current settings
-                        document.getElementById('enable-openai').checked = settings.has_openai_key;
+                        document.getElementById('enable-openai').checked = settingsData.has_openai_key;
                         
                         // Set assistant IDs
-                        if (settings.openai_assistant_ids && settings.openai_assistant_ids.length > 0) {
-                            document.getElementById('assistant-ids').value = settings.openai_assistant_ids.join('\n');
+                        if (settingsData.openai_assistant_ids && settingsData.openai_assistant_ids.length > 0) {
+                            document.getElementById('assistant-ids').value = settingsData.openai_assistant_ids.join('\n');
                         }
                         
                         // Set web search settings
-                        document.getElementById('enable-web-search').checked = settings.has_serper_key;
-                        document.getElementById('web-search-limit').value = settings.web_results_count || 5;
+                        document.getElementById('enable-web-search').checked = settingsData.has_serper_key;
+                        document.getElementById('web-search-limit').value = settingsData.web_results_count || 5;
                         
                         // Set elasticsearch settings
-                        document.getElementById('enable-elasticsearch').checked = settings.elasticsearch_enabled;
-                        document.getElementById('elasticsearch-url').value = settings.elasticsearch_url || 'http://elasticsearch:9200';
-                        document.getElementById('elasticsearch-index').value = settings.elasticsearch_index || 'rag-documents';
+                        document.getElementById('enable-elasticsearch').checked = settingsData.elasticsearch_enabled;
+                        document.getElementById('elasticsearch-url').value = settingsData.elasticsearch_url || 'http://elasticsearch:9200';
+                        document.getElementById('elasticsearch-index').value = settingsData.elasticsearch_index || 'rag-documents';
                         
                         // Update OpenAI status in the status panel when we reload the status
                         // The jQuery-like :contains selector isn't supported in standard DOM queries
@@ -296,8 +297,8 @@
                             if (item.textContent.includes('OpenAI')) {
                                 const badge = item.querySelector('.badge');
                                 if (badge) {
-                                    badge.className = `badge bg-${settings.has_openai_key ? 'success' : 'secondary'} rounded-pill`;
-                                    badge.textContent = settings.has_openai_key ? 'Configured' : 'Not Configured';
+                                    badge.className = `badge bg-${settingsData.has_openai_key ? 'success' : 'secondary'} rounded-pill`;
+                                    badge.textContent = settingsData.has_openai_key ? 'Configured' : 'Not Configured';
                                 }
                             }
                         });
@@ -328,43 +329,28 @@
                 `;
                 
                 try {
-                    // Create settings object
-                    const settings = {};
+                    // Create OpenAI config object using our OpenAI utility
+                    const config = {
+                        apiKey: enableOpenAI ? openaiApiKey : "", // Empty string to clear the key if disabled
+                        assistantIds: assistantIds.length > 0 ? assistantIds : undefined
+                    };
                     
-                    if (enableOpenAI) {
-                        // Only include API key if it's provided (to update it)
-                        if (openaiApiKey) {
-                            settings.openai_api_key = openaiApiKey;
-                        }
-                        
-                        // Add assistant IDs
-                        if (assistantIds.length > 0) {
-                            settings.openai_assistant_ids = assistantIds;
-                        }
-                    } else {
-                        // If OpenAI is disabled, clear the API key
-                        settings.openai_api_key = "";
+                    // If OpenAI is disabled, explicitly set an empty API key
+                    if (!enableOpenAI) {
+                        config.apiKey = "";
                     }
                     
-                    // Send to API to update settings
-                    const response = await fetch('/api/settings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(settings)
-                    });
+                    // Update OpenAI config using our OpenAI utility
+                    const result = await OpenAI.updateConfig(config);
                     
-                    const data = await response.json();
-                    
-                    if (data.status === 'success') {
+                    if (result.status === 'success') {
                         configStatus.innerHTML = `
                             <div class="alert alert-success">
                                 <i class="bi bi-check-circle"></i> LLM configuration saved successfully!
                             </div>
                         `;
                     } else {
-                        throw new Error(data.message || 'Unknown error');
+                        throw new Error(result.message || 'Unknown error');
                     }
                     
                     // Reload status after 2 seconds
