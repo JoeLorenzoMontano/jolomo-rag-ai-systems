@@ -112,8 +112,20 @@ class DatabaseService:
             n_results: Number of results to return
             
         Returns:
-            Dictionary with query results
+            Dictionary with query results or empty results structure if n_results is 0
         """
+        # Handle the case where n_results is 0 (web search only mode)
+        if n_results <= 0:
+            self.logger.info("Skipping ChromaDB query as n_results is 0 or negative")
+            # Return an empty results structure matching ChromaDB's expected format
+            return {
+                "ids": [[]],
+                "documents": [[]],
+                "metadatas": [[]],
+                "distances": [[]]
+            }
+            
+        # Normal query with valid n_results
         return self.collection.query(
             query_embeddings=[query_embedding],
             n_results=n_results,
