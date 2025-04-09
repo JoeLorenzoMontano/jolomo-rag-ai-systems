@@ -12,7 +12,8 @@ from core.config import (
     CHROMA_HOST, CHROMA_PORT, MAX_RETRIES, RETRY_DELAY,
     DOCS_FOLDER, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, CHUNK_OVERLAP, 
     ENABLE_CHUNKING, SERPER_API_KEY, ELASTICSEARCH_URL, 
-    ELASTICSEARCH_ENABLED, ELASTICSEARCH_INDEX
+    ELASTICSEARCH_ENABLED, ELASTICSEARCH_INDEX, OPENAI_API_KEY,
+    OPENAI_ASSISTANT_IDS
 )
 from services.database_service import DatabaseService
 from services.elasticsearch_service import ElasticsearchService
@@ -22,6 +23,7 @@ from services.query_service import QueryService
 from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
 from utils.web_search import WebSearchClient
+from utils.openai_client import OpenAIClient
 
 # Create a container for services
 _services = {}
@@ -80,6 +82,20 @@ def _create_services() -> None:
     else:
         logger.info("No Serper API key provided, web search will be unavailable")
     _services["web_search_client"] = web_search_client
+    
+    # Initialize OpenAI client if API key is available
+    openai_client = None
+    if OPENAI_API_KEY:
+        openai_client = OpenAIClient(api_key=OPENAI_API_KEY)
+        if openai_client.is_available:
+            logger.info("OpenAI client initialized successfully")
+            if OPENAI_ASSISTANT_IDS:
+                logger.info(f"OpenAI Assistant IDs configured: {', '.join(OPENAI_ASSISTANT_IDS)}")
+        else:
+            logger.warning("OpenAI client initialization failed")
+    else:
+        logger.info("No OpenAI API key provided, OpenAI services will be unavailable")
+    _services["openai_client"] = openai_client
     
     # Initialize content processing service
     content_processing_service = ContentProcessingService(
@@ -164,6 +180,10 @@ def get_web_search_client() -> WebSearchClient:
 def get_elasticsearch_service() -> ElasticsearchService:
     """Get the Elasticsearch service."""
     return get_service("elasticsearch_service")
+
+def get_openai_client() -> OpenAIClient:
+    """Get the OpenAI client."""
+    return get_service("openai_client")
 
 def get_all_services() -> Dict[str, Any]:
     """Get all initialized services."""

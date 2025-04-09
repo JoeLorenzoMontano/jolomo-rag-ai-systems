@@ -9,8 +9,9 @@ from typing import List, Dict, Any, Optional
 import logging
 import os
 import requests
+import time
 
-from core.dependencies import get_query_service, get_ollama_client, get_web_search_client
+from core.dependencies import get_query_service, get_ollama_client, get_web_search_client, get_openai_client
 from core.config import get_settings
 from models.schemas import ChatMessage, ChatRequest
 from utils.ollama_client import OllamaClient
@@ -180,64 +181,39 @@ async def chat_query(
                 
         # Direct OpenAI assistant call, skipping all embedding generation and RAG
         try:
-            import openai
-            openai.api_key = settings.get("openai_api_key")
+            # Get OpenAI client from dependencies
+            openai_client = get_openai_client()
             
-            # Create a thread
-            thread = openai.beta.threads.create()
+            if not openai_client or not openai_client.is_available:
+                return {
+                    "status": "error",
+                    "response": "OpenAI API is not available. Please check your API key configuration.",
+                    "model_used": "assistant",
+                    "provider": "openai",
+                    "sources": {"documents": [], "ids": [], "metadatas": []}
+                }
             
-            # Add user messages to the thread
-            for msg in chat_request.messages:
-                if msg.role == "user":
-                    openai.beta.threads.messages.create(
-                        thread_id=thread.id,
-                        role="user",
-                        content=msg.content
-                    )
+            # Prepare messages
+            chat_messages = [{'role': msg.role, 'content': msg.content} for msg in chat_request.messages]
+            
+            # Prepare additional messages (web search results)
+            additional_messages = []
             
             # Add web search results if available
             if web_results:
                 web_results_text = web_search_client.format_results_as_context(web_results)
                 web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
-                openai.beta.threads.messages.create(
-                    thread_id=thread.id,
-                    role="user",
-                    content=web_context_msg
-                )
+                additional_messages.append({
+                    'role': 'user',
+                    'content': web_context_msg
+                })
             
-            # Run the assistant
-            run = openai.beta.threads.runs.create(
-                thread_id=thread.id,
-                assistant_id=chat_request.assistant_id
+            # Call the OpenAI client to create a thread and run it with the assistant
+            response_content = openai_client.create_thread_with_assistant(
+                messages=chat_messages,
+                assistant_id=chat_request.assistant_id,
+                additional_messages=additional_messages
             )
-            
-            # Poll for completion
-            import time
-            run_status = run.status
-            max_attempts = 30  # 30 seconds max wait time
-            attempts = 0
-            
-            while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
-                time.sleep(1)
-                run = openai.beta.threads.runs.retrieve(
-                    thread_id=thread.id,
-                    run_id=run.id
-                )
-                run_status = run.status
-                attempts += 1
-            
-            # Get the assistant's messages
-            messages = openai.beta.threads.messages.list(
-                thread_id=thread.id
-            )
-            
-            # Get the last assistant message
-            assistant_messages = [msg for msg in messages.data if msg.role == "assistant"]
-            if assistant_messages:
-                latest_message = assistant_messages[0]
-                response_content = latest_message.content[0].text.value
-            else:
-                response_content = "The assistant did not provide a response."
                 
             # Format response
             response = {
@@ -360,8 +336,7 @@ async def chat_query(
         
         # OPENAI API PATH
         if chat_request.use_openai and settings.get("openai_api_key"):
-            import openai
-            openai.api_key = settings.get("openai_api_key")
+            # Using our OpenAIClient from dependencies
             
             if is_openai_assistant:
                 # Get web search client for formatting
@@ -369,26 +344,31 @@ async def chat_query(
                 
                 # OpenAI Assistant API
                 try:
-                    # Create a thread
-                    thread = openai.beta.threads.create()
+                    # Get OpenAI client from dependencies
+                    openai_client = get_openai_client()
                     
-                    # Add user messages to the thread
-                    for msg in chat_request.messages:
-                        if msg.role == "user":
-                            openai.beta.threads.messages.create(
-                                thread_id=thread.id,
-                                role="user",
-                                content=msg.content
-                            )
+                    if not openai_client or not openai_client.is_available:
+                        return {
+                            "status": "error",
+                            "response": "OpenAI API is not available. Please check your API key configuration.",
+                            "model_used": "assistant",
+                            "provider": "openai",
+                            "sources": {"documents": [], "ids": [], "metadatas": []}
+                        }
+                    
+                    # Format messages
+                    chat_messages = [{'role': msg.role, 'content': msg.content} for msg in chat_request.messages]
+                    
+                    # Prepare additional messages (context and web search results)
+                    additional_messages = []
                     
                     # Add context as a user message if available
                     if context:
                         context_msg = f"Here's some relevant information that might help answer my question:\n\n{context}"
-                        openai.beta.threads.messages.create(
-                            thread_id=thread.id,
-                            role="user",
-                            content=context_msg
-                        )
+                        additional_messages.append({
+                            'role': 'user',
+                            'content': context_msg
+                        })
                     
                     # Add web search results if available
                     if rag_result.get("web_search_used") and rag_result.get("sources", {}).get("web_results"):
@@ -396,44 +376,17 @@ async def chat_query(
                         if web_search_client:
                             web_results_text = web_search_client.format_results_as_context(web_results)
                             web_context_msg = f"Here are some web search results that might help:\n\n{web_results_text}"
-                            openai.beta.threads.messages.create(
-                                thread_id=thread.id,
-                                role="user",
-                                content=web_context_msg
-                            )
+                            additional_messages.append({
+                                'role': 'user',
+                                'content': web_context_msg
+                            })
                     
-                    # Run the assistant on the thread
-                    run = openai.beta.threads.runs.create(
-                        thread_id=thread.id,
-                        assistant_id=chat_request.assistant_id
+                    # Call the OpenAI client to create a thread and run it with the assistant
+                    response_content = openai_client.create_thread_with_assistant(
+                        messages=chat_messages,
+                        assistant_id=chat_request.assistant_id,
+                        additional_messages=additional_messages
                     )
-                    
-                    # Poll for completion
-                    import time
-                    run_status = run.status
-                    max_attempts = 30
-                    attempts = 0
-                    
-                    while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
-                        time.sleep(1)
-                        run = openai.beta.threads.runs.retrieve(
-                            thread_id=thread.id,
-                            run_id=run.id
-                        )
-                        run_status = run.status
-                        attempts += 1
-                    
-                    # Get assistant's response
-                    messages = openai.beta.threads.messages.list(
-                        thread_id=thread.id
-                    )
-                    
-                    assistant_messages = [msg for msg in messages.data if msg.role == "assistant"]
-                    if assistant_messages:
-                        latest_message = assistant_messages[0]
-                        response_content = latest_message.content[0].text.value
-                    else:
-                        response_content = "The assistant did not provide a response."
                         
                     # Format response
                     response = {
@@ -454,6 +407,18 @@ async def chat_query(
             else:
                 # OpenAI Chat Completion API
                 try:
+                    # Get OpenAI client from dependencies
+                    openai_client = get_openai_client()
+                    
+                    if not openai_client or not openai_client.is_available:
+                        return {
+                            "status": "error",
+                            "response": "OpenAI API is not available. Please check your API key configuration.",
+                            "model_used": chat_request.model or "gpt-3.5-turbo",
+                            "provider": "openai",
+                            "sources": {"documents": [], "ids": [], "metadatas": []}
+                        }
+                    
                     # Format messages
                     openai_messages = []
                     
@@ -468,16 +433,14 @@ async def chat_query(
                     for msg in chat_request.messages:
                         openai_messages.append({"role": msg.role, "content": msg.content})
                     
-                    # Call the API
+                    # Call the API through our client
                     model_name = chat_request.model if chat_request.model else "gpt-3.5-turbo"
-                    openai_response = openai.chat.completions.create(
-                        model=model_name,
+                    response_content = openai_client.create_chat_completion(
                         messages=openai_messages,
+                        model=model_name,
                         temperature=0.7,
                         max_tokens=1000
                     )
-                    
-                    response_content = openai_response.choices[0].message.content
                     
                     # Format response
                     response = {

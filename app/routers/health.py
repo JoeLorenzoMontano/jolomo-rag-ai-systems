@@ -11,7 +11,8 @@ from core.dependencies import (
     get_db_service, 
     get_ollama_client,
     get_query_classifier,
-    get_elasticsearch_service
+    get_elasticsearch_service,
+    get_openai_client
 )
 from core.config import get_settings
 import os
@@ -110,10 +111,14 @@ async def health_check():
         
     # Check OpenAI integration if configured
     settings = get_settings()
-    if settings.get("openai_api_key"):
-        health_status["openai"] = "configured"
+    openai_client = get_openai_client()
+    
+    if openai_client and openai_client.is_available:
+        health_status["openai"] = "healthy"
         if settings.get("openai_assistant_ids"):
             health_status["openai_assistants"] = settings["openai_assistant_ids"]
+    elif settings.get("openai_api_key"):
+        health_status["openai"] = "configured but not available"
     else:
         health_status["openai"] = "not configured"
     
@@ -148,14 +153,22 @@ async def update_api_settings(settings: Dict[str, Any] = Body(...)):
     
     try:
         # Handle OpenAI API Key
+        openai_updated = False
         if "openai_api_key" in settings:
             os.environ["OPENAI_API_KEY"] = settings["openai_api_key"]
+            openai_updated = True
             
         # Handle OpenAI Assistant IDs
         if "openai_assistant_ids" in settings:
             assistant_ids = settings["openai_assistant_ids"]
             if isinstance(assistant_ids, list):
                 os.environ["OPENAI_ASSISTANT_IDS"] = ",".join(assistant_ids)
+                openai_updated = True
+        
+        # Refresh OpenAI client if settings changed
+        if openai_updated:
+            from core.dependencies import _create_services
+            _create_services()  # Reinitialize services including OpenAIClient
             
         # Handle Serper API Key (for web search)
         if "serper_api_key" in settings:
