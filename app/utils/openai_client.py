@@ -62,34 +62,75 @@ class OpenAIClient:
             raise ValueError("OpenAI API is not available")
             
         try:
-            # Note: The function definitions are not explicitly passed here.
-            # We're assuming the model is already trained to call functions based on the conversation.
-            response = self.openai.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            # Set up API call parameters
+            params = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            
+            # Enable tools/functions if function_responses are provided
+            if function_responses:
+                # Create tool definitions for each function_response
+                tools = []
+                for function_name in function_responses.keys():
+                    tools.append({
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            # Add a simple schema - OpenAI requires at least a name and description
+                            "description": f"Function: {function_name}",
+                            "parameters": {"type": "object", "properties": {}}
+                        }
+                    })
+                
+                # Add tools to API parameters if any were defined
+                if tools:
+                    params["tools"] = tools
+                    params["tool_choice"] = "auto"  # Let model decide when to call functions
+                    self.logger.info(f"Enabled {len(tools)} tools for OpenAI API call")
+            
+            # Make the API call
+            response = self.openai.chat.completions.create(**params)
             
             # Get the message from the response
             message = response.choices[0].message
             
-            # Check if a function call was generated
-            if hasattr(message, 'function_call') and message.function_call:
+            # Check for tool_calls first (newer API versions)
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                # Process the first function call we find
+                for tool_call in message.tool_calls:
+                    if tool_call.type == "function":
+                        function_name = tool_call.function.name
+                        function_args = tool_call.function.arguments
+                        
+                        self.logger.info(f"Tool call detected: {function_name}")
+                        
+                        # If we have a predefined response for this function, return it
+                        if function_responses and function_name in function_responses:
+                            self.logger.info(f"Returning predefined response for function: {function_name}")
+                            return function_responses[function_name]
+                
+                # No matching function response found, return content
+                return message.content or "[Tool calls were made but no predefined responses were found]"
+            
+            # Check for the older function_call property
+            elif hasattr(message, 'function_call') and message.function_call:
                 function_name = message.function_call.name
                 function_args = message.function_call.arguments
                 
-                self.logger.info(f"Function call detected: {function_name} with arguments: {function_args}")
+                self.logger.info(f"Function call detected: {function_name}")
                 
                 # If we have a predefined response for this function, return it
                 if function_responses and function_name in function_responses:
                     self.logger.info(f"Returning predefined response for function: {function_name}")
                     return function_responses[function_name]
                 else:
-                    # If no predefined response is available, return the original content or a placeholder
+                    # If no predefined response is available, return the original content
                     return message.content or f"[Function call to {function_name} would happen here]"
             
-            # If no function call, just return the content
+            # If no function/tool call, just return the content
             return message.content
         except Exception as e:
             self.logger.error(f"Error in OpenAI chat completion: {e}")
