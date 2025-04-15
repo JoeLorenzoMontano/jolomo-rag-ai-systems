@@ -220,7 +220,8 @@ async def chat_query(
             response_content = openai_client.create_thread_with_assistant(
                 messages=chat_messages,
                 assistant_id=chat_request.assistant_id,
-                additional_messages=additional_messages
+                additional_messages=additional_messages,
+                function_responses=chat_request.function_responses
             )
                 
             # Format response
@@ -233,6 +234,11 @@ async def chat_query(
                 "sources": rag_result["sources"],
                 "web_search_used": rag_result["web_search_used"]
             }
+            
+            # Add function call information to response if applicable
+            if chat_request.function_responses and any(func_name in response_content for func_name in chat_request.function_responses.keys()):
+                logging.info("Function response was used in reply")
+                response["function_call_used"] = True
             
             return response
             

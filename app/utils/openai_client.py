@@ -139,7 +139,8 @@ class OpenAIClient:
     def create_thread_with_assistant(self,
                                     messages: List[Dict[str, str]],
                                     assistant_id: str,
-                                    additional_messages: Optional[List[Dict[str, str]]] = None) -> str:
+                                    additional_messages: Optional[List[Dict[str, str]]] = None,
+                                    function_responses: Optional[Dict[str, Any]] = None) -> str:
         """
         Create a thread and run it with an OpenAI Assistant.
         
@@ -147,6 +148,7 @@ class OpenAIClient:
             messages: List of message objects with 'role' and 'content' keys
             assistant_id: ID of the OpenAI Assistant to use
             additional_messages: Optional additional messages to include (e.g., context, web search results)
+            function_responses: Dictionary mapping function names to predefined responses
             
         Returns:
             Assistant's response text
@@ -208,7 +210,16 @@ class OpenAIClient:
             assistant_messages = [msg for msg in messages.data if msg.role == "assistant"]
             if assistant_messages:
                 latest_message = assistant_messages[0]
-                return latest_message.content[0].text.value
+                response_text = latest_message.content[0].text.value
+                
+                # Check if any function responses should be inserted
+                if function_responses:
+                    for function_name, function_response in function_responses.items():
+                        if function_name in response_text:
+                            self.logger.info(f"Function response applied for {function_name} in Assistant API")
+                            return function_response
+                
+                return response_text
             else:
                 return "The assistant did not provide a response."
                 
