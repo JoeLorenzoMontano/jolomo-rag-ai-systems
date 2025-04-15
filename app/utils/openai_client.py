@@ -192,14 +192,65 @@ class OpenAIClient:
             max_attempts = 30  # 30 seconds max wait time
             attempts = 0
             
-            while run_status in ["queued", "in_progress", "cancelling"] and attempts < max_attempts:
+            while run_status in ["queued", "in_progress", "cancelling", "requires_action"] and attempts < max_attempts:
                 time.sleep(1)
                 run = self.openai.beta.threads.runs.retrieve(
                     thread_id=thread.id,
                     run_id=run.id
                 )
                 run_status = run.status
-                attempts += 1
+                
+                # Handle requires_action status when function calls are needed
+                if run_status == "requires_action":
+                    self.logger.info("Assistant requires function execution")
+                    
+                    # Check if required actions are tool calls
+                    if hasattr(run, 'required_action') and run.required_action.type == "submit_tool_outputs":
+                        tool_outputs = []
+                        
+                        # Process each tool call
+                        for tool_call in run.required_action.submit_tool_outputs.tool_calls:
+                            if tool_call.type != "function":
+                                continue
+                                
+                            name = tool_call.function.name
+                            try:
+                                import json
+                                args = json.loads(tool_call.function.arguments)
+                            except:
+                                args = {}
+                                
+                            self.logger.info(f"Processing function call: {name} with args: {args}")
+                            
+                            # Use our predefined response if available
+                            if function_responses and name in function_responses:
+                                result = function_responses[name]
+                                self.logger.info(f"Using predefined response for function: {name}")
+                            else:
+                                # Default response if no predefined response available
+                                result = f"Function {name} could not be executed"
+                                
+                            # Add the result to tool outputs
+                            tool_outputs.append({
+                                "tool_call_id": tool_call.id,
+                                "output": str(result)
+                            })
+                        
+                        # Submit the tool outputs back to the assistant
+                        if tool_outputs:
+                            self.logger.info(f"Submitting tool outputs: {tool_outputs}")
+                            run = self.openai.beta.threads.runs.submit_tool_outputs(
+                                thread_id=thread.id,
+                                run_id=run.id,
+                                tool_outputs=tool_outputs
+                            )
+                            # Reset the poll counter since we've taken action
+                            attempts = 0
+                        else:
+                            # If we can't handle the action, increment attempts
+                            attempts += 1
+                else:
+                    attempts += 1
             
             # Get the assistant's messages
             messages = self.openai.beta.threads.messages.list(
