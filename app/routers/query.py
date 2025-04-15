@@ -154,6 +154,14 @@ async def chat_query(
                           chat_request.model == 'assistant' and 
                           chat_request.assistant_id)
     
+    # OpenAI assistants are pre-loaded with context, so we automatically disable local docs
+    # when an OpenAI assistant is specified, unless explicitly requested
+    if is_openai_assistant and chat_request.use_local_docs is True:
+        logging.info("OpenAI Assistant specified with explicit use_local_docs=true. Will retrieve local documents as supplementary context.")
+    elif is_openai_assistant:
+        logging.info("OpenAI Assistant specified. Automatically disabling local document retrieval.")
+        chat_request.use_local_docs = False
+    
     # Check if we should use the fast path - completely bypass RAG
     if is_openai_assistant and not chat_request.use_local_docs and settings.get("openai_api_key"):
         logging.info(f"FAST PATH: Using OpenAI Assistant without local document retrieval")
@@ -439,8 +447,13 @@ async def chat_query(
                         messages=openai_messages,
                         model=model_name,
                         temperature=0.7,
-                        max_tokens=1000
+                        max_tokens=1000,
+                        function_responses=chat_request.function_responses
                     )
+                    
+                    # Log if function responses were provided
+                    if chat_request.function_responses:
+                        logging.info(f"Function responses provided for: {', '.join(chat_request.function_responses.keys())}")
                     
                     # Format response
                     response = {
@@ -449,6 +462,11 @@ async def chat_query(
                         "model_used": model_name,
                         "provider": "openai"
                     }
+                    
+                    # Add function call information to response if applicable
+                    if chat_request.function_responses and any(func_name in response_content for func_name in chat_request.function_responses.keys()):
+                        logging.info("Function response was used in reply")
+                        response["function_call_used"] = True
                 except Exception as e:
                     logging.error(f"Error with OpenAI Chat API: {e}")
                     response = {

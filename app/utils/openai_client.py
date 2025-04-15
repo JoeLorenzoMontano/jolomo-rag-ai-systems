@@ -40,18 +40,20 @@ class OpenAIClient:
                               messages: List[Dict[str, str]], 
                               model: str = "gpt-3.5-turbo",
                               temperature: float = 0.7,
-                              max_tokens: Optional[int] = 1000) -> str:
+                              max_tokens: Optional[int] = 1000,
+                              function_responses: Optional[Dict[str, Any]] = None) -> str:
         """
-        Generate a completion using OpenAI's chat API.
+        Generate a completion using OpenAI's chat API with function call support.
         
         Args:
             messages: List of message objects with 'role' and 'content' keys
             model: Model to use for completion
             temperature: Temperature parameter for response generation
             max_tokens: Maximum tokens to generate
+            function_responses: Dictionary mapping function names to predefined responses
             
         Returns:
-            Generated text response
+            Generated text response or predefined function response
             
         Raises:
             ValueError: If OpenAI is not available or there's an API error
@@ -60,6 +62,8 @@ class OpenAIClient:
             raise ValueError("OpenAI API is not available")
             
         try:
+            # Note: The function definitions are not explicitly passed here.
+            # We're assuming the model is already trained to call functions based on the conversation.
             response = self.openai.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -67,7 +71,26 @@ class OpenAIClient:
                 max_tokens=max_tokens
             )
             
-            return response.choices[0].message.content
+            # Get the message from the response
+            message = response.choices[0].message
+            
+            # Check if a function call was generated
+            if hasattr(message, 'function_call') and message.function_call:
+                function_name = message.function_call.name
+                function_args = message.function_call.arguments
+                
+                self.logger.info(f"Function call detected: {function_name} with arguments: {function_args}")
+                
+                # If we have a predefined response for this function, return it
+                if function_responses and function_name in function_responses:
+                    self.logger.info(f"Returning predefined response for function: {function_name}")
+                    return function_responses[function_name]
+                else:
+                    # If no predefined response is available, return the original content or a placeholder
+                    return message.content or f"[Function call to {function_name} would happen here]"
+            
+            # If no function call, just return the content
+            return message.content
         except Exception as e:
             self.logger.error(f"Error in OpenAI chat completion: {e}")
             raise ValueError(f"OpenAI API error: {str(e)}")

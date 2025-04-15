@@ -111,3 +111,4 @@ class ChatRequest(BaseModel):
     use_openai: bool = Field(False, description="Whether to use OpenAI instead of Ollama")
     assistant_id: Optional[str] = Field(None, description="Specific OpenAI assistant ID to use")
     use_local_docs: bool = Field(True, description="Whether to use local document retrieval")
+    function_responses: Optional[Dict[str, Any]] = Field(None, description="Key-value pairs where the key is the function name and the value is the response to provide when that function is called")
