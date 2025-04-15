@@ -1,6 +1,10 @@
 services:
   api:
-    build: ./app
+    build:
+      context: ./app
+      # Add build args for better caching
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     container_name: document-processing-service
     restart: always
     ports:
@@ -9,14 +13,14 @@ services:
       - chromadb
       - elasticsearch
     volumes:
-      - ./rag-documents:/app/data
+      - ./rag-documents:/app/data:ro  # Added read-only flag for security
     environment:
       # Ollama configuration - using host Ollama
       - OLLAMA_BASE_URL=${HOST_OLLAMA:-http://host.docker.internal:11434}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
-      - MODEL=${MODEL}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - MODEL=${MODEL:-llama3:latest}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-minilm:l6-v2}
       # Document chunking settings
       - ENABLE_CHUNKING=true
       - MAX_CHUNK_SIZE=1000
@@ -27,19 +31,37 @@ services:
       # Elasticsearch configuration
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-true}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # For Linux compatibility
       
   ui:
-    build: ./ui
+    build:
+      context: ./ui
+      # Add build args for better caching
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     container_name: document-ui-service
     restart: always
     ports:
       - "5000:5000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
       - API_URL=http://api:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - app-network
 
@@ -48,7 +70,7 @@ services:
     container_name: chromadb
     restart: always
     volumes:
-      - ./pre-populated-db/chromadb:/chroma/chroma  # Use local pre-populated data
+      - ./pre-populated-db/chromadb:/chroma/chroma:delegated  # Use delegated mount for better performance
     ports:
       - "8001:8000"
     environment:
@@ -58,6 +80,11 @@ services:
       - CHROMA_SERVER_NOFILE=65535
       # Pin NumPy to avoid compatibility issues
       - NUMPY_VERSION=1.26.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - app-network
 
@@ -69,20 +96,34 @@ services:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - xpack.security.enabled=false
+      # Disable XPack monitoring to reduce memory usage
+      - xpack.monitoring.enabled=false 
+      - bootstrap.memory_lock=true
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
-      - "9300:9300"
     networks:
       - app-network
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
 
+  # Make Kibana optional by using a profile
   kibana:
+    profiles: ["dev", "with-kibana"]
     image: docker.elastic.co/kibana/kibana:8.11.1
     container_name: kibana
     restart: always
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
@@ -93,6 +134,11 @@ services:
 networks:
   app-network:
     driver: bridge
+    # Improve network performance
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
   elasticsearch-data:
