@@ -1,17 +1,5 @@
 # Document Processing API with Web UI
 
-> **⚠️ IMPORTANT FOR REVIEWERS**: 
->
-> 1. **Docker Compose Options**:
->    - **Option A (Recommended)**: `docker-compose up -d` - Uses Ollama installed on your host machine
->    - **Option B (Slower)**: `docker-compose -f docker-compose.docker.ollama.yml up -d` - Runs Ollama in a container
->
->    **Why Option A is recommended**: Running Ollama in a container with CPU-only is noticeably slow, with responses taking 15-30+ seconds. With Ollama installed directly on your host machine, you'll get significantly faster responses (3-8 seconds) and easier GPU acceleration if available. See the ["Ollama Setup Options"](#ollama-setup-options) section for installation instructions.
->
-> 2. **Pre-populated Database**: The ChromaDB database comes pre-populated with embeddings for all the documents in the `rag-documents` directory, so you can start querying immediately. If you wish to re-process the documents with different chunking settings, you can clear the database and re-process them through the System Info page in the UI or using the `/clear-db` and `/process` API endpoints.
->
-> 3. **API Keys Included**: The provided `.env` file includes my personal Serper.dev API key for web search functionality. You can use it during your review without needing to register for your own key.
-
 A complete RAG (Retrieval-Augmented Generation) system that processes documents, stores their embeddings in ChromaDB and indexes in Elasticsearch, and generates AI responses based on the most relevant content. The system combines multiple search techniques to deliver more accurate and relevant responses using a dual-database architecture with ChromaDB (vector embeddings) and Elasticsearch (text search) along with document reranking, providing a powerful and flexible solution that adapts to different query types. The system includes both an API backend and a web-based user interface.
 
 **Key Features**:
