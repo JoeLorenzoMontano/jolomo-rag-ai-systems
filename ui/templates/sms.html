@@ -141,6 +141,20 @@
 
                                             <div class="row mb-3">
                                                 <div class="col-md-6">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="auto-classify" checked>
+                                                        <label class="form-check-label" for="auto-classify">
+                                                            Auto-Classify Query Source
+                                                        </label>
+                                                        <span class="ms-1" data-bs-toggle="tooltip" title="Automatically determine whether to use Web Search or Local Documents based on query content">
+                                                            <i class="bi bi-question-circle-fill text-muted"></i>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row mb-3">
+                                                <div class="col-md-6">
                                                     <label for="n-results" class="form-label">Results Count</label>
                                                     <input type="number" class="form-control" id="n-results" value="3" min="1" max="10">
                                                 </div>
@@ -209,6 +223,13 @@
     <script src="/static/js/openai.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize tooltips
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl, {
+                    placement: 'top'
+                });
+            });
             // Form elements
             const smsForm = document.getElementById('sms-form');
             const phoneNumberInput = document.getElementById('phone-number');
@@ -367,7 +388,8 @@
                     enhance_query: enhanceQueryCheck.checked,
                     hybrid_search: hybridSearchCheck.checked,
                     apply_reranking: rerankingCheck.checked,
-                    check_question_matches: questionMatchesCheck.checked
+                    check_question_matches: questionMatchesCheck.checked,
+                    auto_classify: document.getElementById('auto-classify').checked
                 };
                 
                 // Add model if selected

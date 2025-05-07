@@ -61,6 +61,7 @@ async def send_sms_response(
             hybrid_search=sms_request.hybrid_search,
             apply_reranking=sms_request.apply_reranking,
             check_question_matches=sms_request.check_question_matches,
+            auto_classify=sms_request.auto_classify,
             custom_ollama_client=ollama_client
         )
         

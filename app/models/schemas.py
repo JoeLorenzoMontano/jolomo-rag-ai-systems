@@ -127,6 +127,7 @@ class SMSRequest(BaseModel):
     hybrid_search: bool = Field(True, description="Whether to combine results from ChromaDB and Elasticsearch")
     apply_reranking: bool = Field(True, description="Whether to apply reranking to improve document relevance")
     check_question_matches: bool = Field(True, description="Whether to check for question matches")
+    auto_classify: bool = Field(True, description="Whether to automatically classify the query for source selection")
     model: Optional[str] = Field(None, description="Model to use for generating the response")
     use_openai: bool = Field(False, description="Whether to use OpenAI instead of Ollama")
     assistant_id: Optional[str] = Field(None, description="Specific OpenAI assistant ID to use")

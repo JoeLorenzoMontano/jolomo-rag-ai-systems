@@ -59,6 +59,7 @@ class QueryService:
                      hybrid_search: bool = True,
                      apply_reranking: bool = True,
                      check_question_matches: bool = True,
+                     auto_classify: bool = True,
                      custom_ollama_client: Optional[OllamaClient] = None) -> Dict[str, Any]:
         """
         Process a query and generate a response.
@@ -75,6 +76,7 @@ class QueryService:
             hybrid_search: Whether to combine ChromaDB and Elasticsearch results for better retrieval
             apply_reranking: Whether to apply reranking to retrieved results
             check_question_matches: Whether to check for matches with pre-generated questions
+            auto_classify: Whether to automatically classify query source (web vs. documents)
             custom_ollama_client: Optional custom Ollama client with specific models
             
         Returns:
@@ -415,7 +417,7 @@ class QueryService:
             confidence = 1.0
             classification_metadata = {}
             
-            if web_search is None:  # Auto-classify if not explicitly set
+            if web_search is None and auto_classify:  # Auto-classify if not explicitly set and auto-classify is enabled
                 # Extract document scores for better classification
                 doc_distance_scores = distances if distances else []
                 # Convert distances to similarity scores (lower distance = higher similarity)
@@ -427,6 +429,10 @@ class QueryService:
                     doc_scores=doc_scores
                 )
                 self.logger.info(f"Query classified as '{source_type}' with {confidence:.2f} confidence")
+            elif web_search is None and not auto_classify:
+                # If auto_classify is disabled and web_search is not set, default to documents only
+                self.logger.info("Auto-classification disabled, defaulting to document-only search")
+                source_type = "documents"
             
             # Decide whether to use web search based on classification or explicit setting
             should_use_web = web_search if web_search is not None else (
@@ -788,13 +794,14 @@ class QueryService:
             
         return combined_docs, combined_ids, combined_metadatas, combined_distances
         
-    def process_chat(self, messages: List[Dict[str, str]], context: Optional[str] = None, custom_ollama_client: Optional[OllamaClient] = None) -> Dict[str, Any]:
+    def process_chat(self, messages: List[Dict[str, str]], context: Optional[str] = None, auto_classify: bool = True, custom_ollama_client: Optional[OllamaClient] = None) -> Dict[str, Any]:
         """
         Process a chat query with conversation history.
         
         Args:
             messages: List of message objects with 'role' and 'content' keys
             context: Optional context from RAG to use for grounding responses
+            auto_classify: Whether to automatically classify query for conversation vs. new context needed
             custom_ollama_client: Optional custom Ollama client with specific models
             
         Returns:
@@ -822,13 +829,20 @@ class QueryService:
             if custom_ollama_client:
                 self.logger.info(f"Using custom models for chat - Query: {ollama_client.model}, Embedding: {ollama_client.embedding_model}")
                 
-            # Classify the query to determine if it needs new RAG context or just conversation history
-            source_type, confidence, classification_metadata = self.query_classifier.classify(
-                query=latest_user_message,
-                conversation_history=messages
-            )
+            # Classify the query if auto_classify is enabled
+            source_type = "documents"  # Default to documents if no classification
+            confidence = 1.0
+            classification_metadata = {}
             
-            self.logger.info(f"Query classified as '{source_type}' with {confidence:.2f} confidence")
+            if auto_classify:
+                # Classify the query to determine if it needs new RAG context or just conversation history
+                source_type, confidence, classification_metadata = self.query_classifier.classify(
+                    query=latest_user_message,
+                    conversation_history=messages
+                )
+                self.logger.info(f"Query classified as '{source_type}' with {confidence:.2f} confidence")
+            else:
+                self.logger.info("Auto-classification disabled, treating as new query requiring RAG context")
             
             # Decide how to handle based on classification
             if source_type == "conversation":
