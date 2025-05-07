@@ -67,6 +67,7 @@
                                                     <label class="form-check-label" for="use-openai">
                                                         Use OpenAI API
                                                     </label>
+                                                    <span id="openai-badge" class="badge bg-success ms-2" style="display: none;">OpenAI Enabled</span>
                                                 </div>
                                             </div>
                                             
@@ -76,6 +77,9 @@
                                                     <option value="">None (Use GPT-3.5/4)</option>
                                                     <!-- Assistants will be loaded dynamically -->
                                                 </select>
+                                                <div class="form-text text-muted">
+                                                    Default model is GPT-3.5-turbo when no assistant is selected
+                                                </div>
                                             </div>
                                             
                                             <div class="row mb-3">
@@ -260,6 +264,7 @@
                 const useOpenAIToggle = document.getElementById('use-openai');
                 const openaiOptions = document.getElementById('openai-options');
                 const assistantSelect = document.getElementById('assistant-select');
+                const openAIBadge = document.getElementById('openai-badge');
                 
                 // Enable/disable OpenAI toggle based on configuration
                 useOpenAIToggle.disabled = !isOpenAIConfigured;
@@ -269,6 +274,20 @@
                     // Show/hide OpenAI options when toggle is changed
                     useOpenAIToggle.addEventListener('change', function() {
                         openaiOptions.style.display = this.checked ? 'block' : 'none';
+                        openAIBadge.style.display = this.checked ? 'inline-block' : 'none';
+                        
+                        // Update model select if OpenAI is enabled
+                        if (this.checked) {
+                            modelSelect.disabled = true;
+                            modelSelect.parentNode.querySelector('.form-text')?.remove();
+                            const modelHint = document.createElement('div');
+                            modelHint.className = 'form-text text-muted';
+                            modelHint.textContent = 'Model selection disabled when using OpenAI';
+                            modelSelect.parentNode.appendChild(modelHint);
+                        } else {
+                            modelSelect.disabled = false;
+                            modelSelect.parentNode.querySelector('.form-text')?.remove();
+                        }
                     });
                     
                     // Load assistants

@@ -201,11 +201,11 @@ class TextbeltClient:
                             "content": f"{system_message}\n\n{query}"
                         })
                         
-                        response = openai_client.chat_with_assistant(
-                            assistant_id=assistant_id,
-                            messages=thread_messages
+                        response_text = openai_client.create_thread_with_assistant(
+                            messages=thread_messages,
+                            assistant_id=assistant_id
                         )
-                        return response.get("response", "No response from Assistant.")
+                        return response_text
                     else:
                         # Use OpenAI Chat Completions API
                         openai_messages = []
@@ -217,11 +217,11 @@ class TextbeltClient:
                             })
                         
                         openai_model = model or "gpt-3.5-turbo"
-                        response = openai_client.chat_completion(
+                        response_text = openai_client.create_chat_completion(
                             model=openai_model,
                             messages=openai_messages
                         )
-                        return response.get("message", {}).get("content", "No response from OpenAI.")
+                        return response_text
             
             # If not using OpenAI or OpenAI failed, use Ollama
             # Get or use provided Ollama client
