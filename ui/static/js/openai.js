@@ -93,5 +93,19 @@ const OpenAI = {
             return modelSelection.substring('assistant_'.length);
         }
         return null;
+    },
+    
+    /**
+     * Update UI elements based on selected model
+     * @param {String} modelSelection - The selected model
+     * @param {HTMLElement} localDocsToggle - The local docs toggle element
+     */
+    updateUIForAssistant(modelSelection, localDocsToggle) {
+        if (this.isAssistant(modelSelection)) {
+            // Disable local docs by default for assistants
+            localDocsToggle.checked = false;
+            // Add tooltip or visual indicator that local docs aren't needed with assistants
+            console.log('OpenAI Assistant selected: Local docs disabled by default');
+        }
     }
 };

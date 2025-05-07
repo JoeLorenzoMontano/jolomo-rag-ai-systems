@@ -193,9 +193,39 @@
             modelSelector.addEventListener('change', function() {
                 const selectedModel = modelSelector.value;
                 
-                // If this is an OpenAI assistant, automatically disable local docs
+                // Use our OpenAI utility to update UI based on model selection
+                OpenAI.updateUIForAssistant(selectedModel, localDocsToggle);
+                
+                // Add a small notification when selecting an assistant
                 if (OpenAI.isAssistant(selectedModel)) {
-                    localDocsToggle.checked = false;
+                    const assistantTooltip = document.createElement('div');
+                    assistantTooltip.className = 'alert alert-info mt-2 mb-2';
+                    assistantTooltip.textContent = 'OpenAI Assistant selected. Local document retrieval disabled for optimal performance.';
+                    assistantTooltip.id = 'assistant-notice';
+                    assistantTooltip.style.fontSize = '0.8rem';
+                    assistantTooltip.style.padding = '0.5rem';
+                    
+                    // Remove any existing notice before adding a new one
+                    const existingNotice = document.getElementById('assistant-notice');
+                    if (existingNotice) {
+                        existingNotice.remove();
+                    }
+                    
+                    // Add the notice after the model selector
+                    modelSelector.parentNode.parentNode.after(assistantTooltip);
+                    
+                    // Remove the notice after a few seconds
+                    setTimeout(() => {
+                        if (document.getElementById('assistant-notice')) {
+                            document.getElementById('assistant-notice').remove();
+                        }
+                    }, 5000);
+                } else {
+                    // Remove the notice if switching away from an assistant
+                    const existingNotice = document.getElementById('assistant-notice');
+                    if (existingNotice) {
+                        existingNotice.remove();
+                    }
                 }
             });
             
