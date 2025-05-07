@@ -38,12 +38,11 @@ class ElasticsearchService:
         for attempt in range(self.max_retries):
             try:
                 self.logger.info(f"Connection attempt {attempt + 1} to Elasticsearch at {self.url}...")
+                # Create basic client with minimal parameters to avoid compatibility issues
                 self.client = Elasticsearch(
                     self.url, 
                     retry_on_timeout=True,
-                    request_timeout=30,  # Increased timeout
-                    max_retries=5,  # Add retry at the client level
-                    api_version="8"  # Fix compatibility issue between client and server
+                    request_timeout=30  # Increased timeout
                 )
                 
                 # Test connection with info request
