@@ -27,6 +27,9 @@ services:
       # Elasticsearch configuration
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-true}
+      # OpenAI API configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-xyz}
+      - OPENAI_ASSISTANT_IDS=${OPENAI_ASSISTANT_IDS:-xyz}
     networks:
       - app-network
       
@@ -48,7 +51,8 @@ services:
     container_name: chromadb
     restart: always
     volumes:
-      - ./pre-populated-db/chromadb:/chroma/chroma  # Use local pre-populated data
+      #- ./pre-populated-db/chromadb:/chroma/chroma  # Use local pre-populated data
+      - chromadb-data:/chroma/chroma
     ports:
       - "8001:8000"
     environment:
@@ -56,6 +60,7 @@ services:
       - ALLOW_RESET=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
       - CHROMA_SERVER_NOFILE=65535
+      - NUMPY_VERSION=1.26.0
       # Pin NumPy to avoid compatibility issues
       - NUMPY_VERSION=1.26.0
     networks:
@@ -96,3 +101,4 @@ networks:
 
 volumes:
   elasticsearch-data:
+  chromadb-data:
