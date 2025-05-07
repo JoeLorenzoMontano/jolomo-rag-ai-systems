@@ -7,6 +7,8 @@ echo "OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}"
 echo "CHROMA_HOST: ${CHROMA_HOST}"
 echo "CHROMA_PORT: ${CHROMA_PORT}"
 echo "MODEL: ${MODEL}"
+echo "ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}"
+echo "ELASTICSEARCH_ENABLED: ${ELASTICSEARCH_ENABLED}"
 
 # Try to ping the services
 echo "Network check:"
@@ -14,6 +16,24 @@ echo "Trying to reach Ollama..."
 ping -c 1 ollama || echo "Cannot ping Ollama"
 echo "Trying to reach ChromaDB..."
 ping -c 1 chromadb || echo "Cannot ping ChromaDB"
+echo "Trying to reach Elasticsearch..."
+ping -c 1 elasticsearch || echo "Cannot ping Elasticsearch"
+
+# Wait for Elasticsearch to be ready if enabled
+if [ "${ELASTICSEARCH_ENABLED}" = "true" ]; then
+  echo "Waiting for Elasticsearch at ${ELASTICSEARCH_URL}..."
+  for i in {1..30}; do
+    if curl -s -f "${ELASTICSEARCH_URL}/_cluster/health" > /dev/null; then
+      echo "Elasticsearch is ready!"
+      break
+    fi
+    echo "Elasticsearch not ready yet, waiting..."
+    sleep 2
+    if [ $i -eq 30 ]; then
+      echo "WARNING: Timed out waiting for Elasticsearch, continuing startup..."
+    fi
+  done
+fi
 
 # Wait for Ollama to be fully available
 echo "Waiting for Ollama to be ready..."

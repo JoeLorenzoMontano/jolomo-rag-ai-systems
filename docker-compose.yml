@@ -7,8 +7,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - chromadb
-      - elasticsearch
+      chromadb:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - ./rag-documents:/app/data
     environment:
@@ -76,8 +78,17 @@ services:
     restart: always
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+      - "TAKE_FILE_OWNERSHIP=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     ports:
@@ -85,6 +96,11 @@ services:
       - "9300:9300"
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.1
