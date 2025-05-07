@@ -227,6 +227,11 @@ def config_page():
     """Render the configuration page"""
     return render_template('config.html')
 
+@app.route('/sms', methods=['GET'])
+def sms_page():
+    """Render the SMS page"""
+    return render_template('sms.html')
+
 @app.route('/api/chroma-info', methods=['GET'])
 def chroma_info():
     """Get information about ChromaDB"""
@@ -313,6 +318,27 @@ def update_settings():
         return jsonify(response.json())
     except Exception as e:
         logging.error(f"Error updating API settings: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+        
+@app.route('/api/sms', methods=['POST'])
+def send_sms():
+    """Send SMS via the API"""
+    try:
+        data = request.get_json()
+        response = requests.post(f"{API_URL}/sms", json=data, timeout=60)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error sending SMS: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+        
+@app.route('/api/sms/quota', methods=['GET'])
+def sms_quota():
+    """Check SMS quota via the API"""
+    try:
+        response = requests.get(f"{API_URL}/sms/quota", timeout=10)
+        return jsonify(response.json())
+    except Exception as e:
+        logging.error(f"Error checking SMS quota: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/api/clear-db', methods=['POST'])
