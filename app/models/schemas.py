@@ -112,3 +112,28 @@ class ChatRequest(BaseModel):
     assistant_id: Optional[str] = Field(None, description="Specific OpenAI assistant ID to use")
     use_local_docs: bool = Field(True, description="Whether to use local document retrieval")
     function_responses: Optional[Dict[str, Any]] = Field(None, description="Key-value pairs where the key is the function name and the value is the response to provide when that function is called")
+
+
+class SMSRequest(BaseModel):
+    """Schema for an SMS request."""
+    phone: str = Field(description="Phone number to send the message to")
+    query: str = Field(description="Query to answer via SMS")
+    n_results: int = Field(3, description="Number of results to return")
+    combine_chunks: bool = Field(True, description="Whether to combine chunks from the same document")
+    web_search: Optional[bool] = Field(None, description="Whether to use web search (auto if None)")
+    web_results_count: int = Field(3, description="Number of web search results to include")
+    enhance_query: bool = Field(True, description="Whether to enhance the query for better retrieval")
+    use_elasticsearch: Optional[bool] = Field(None, description="Whether to use Elasticsearch (auto if None)")
+    hybrid_search: bool = Field(True, description="Whether to combine results from ChromaDB and Elasticsearch")
+    apply_reranking: bool = Field(True, description="Whether to apply reranking to improve document relevance")
+    check_question_matches: bool = Field(True, description="Whether to check for question matches")
+    model: Optional[str] = Field(None, description="Model to use for generating the response")
+
+
+class SMSResponse(BaseModel):
+    """Response schema for SMS requests."""
+    status: str = Field(description="Status of the SMS send attempt")
+    message: str = Field(description="Message that was sent or error message")
+    textbelt_response: Dict[str, Any] = Field(description="Raw response from Textbelt API")
+    sources: Optional[Dict[str, Any]] = Field(None, description="Sources used for the response")
+    model_used: Optional[str] = Field(None, description="Model used for generating the response")

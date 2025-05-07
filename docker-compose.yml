@@ -30,6 +30,8 @@ services:
       # OpenAI API configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY:-xyz}
       - OPENAI_ASSISTANT_IDS=${OPENAI_ASSISTANT_IDS:-xyz}
+      # SMS API configuration
+      - TEXTBELT_API_KEY=${TEXTBELT_API_KEY}
     networks:
       - app-network
       

@@ -13,7 +13,7 @@ from core.config import (
     DOCS_FOLDER, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, CHUNK_OVERLAP, 
     ENABLE_CHUNKING, SERPER_API_KEY, ELASTICSEARCH_URL, 
     ELASTICSEARCH_ENABLED, ELASTICSEARCH_INDEX, OPENAI_API_KEY,
-    OPENAI_ASSISTANT_IDS
+    OPENAI_ASSISTANT_IDS, TEXTBELT_API_KEY
 )
 from services.database_service import DatabaseService
 from services.elasticsearch_service import ElasticsearchService
@@ -24,6 +24,7 @@ from utils.ollama_client import OllamaClient
 from utils.query_classifier import QueryClassifier
 from utils.web_search import WebSearchClient
 from utils.openai_client import OpenAIClient
+from utils.textbelt_client import TextbeltClient
 
 # Create a container for services
 _services = {}
@@ -96,6 +97,18 @@ def _create_services() -> None:
     else:
         logger.info("No OpenAI API key provided, OpenAI services will be unavailable")
     _services["openai_client"] = openai_client
+    
+    # Initialize Textbelt client if API key is available
+    textbelt_client = None
+    if TEXTBELT_API_KEY:
+        textbelt_client = TextbeltClient(api_key=TEXTBELT_API_KEY)
+        if textbelt_client.is_available:
+            logger.info("Textbelt client initialized successfully")
+        else:
+            logger.warning("Textbelt client initialization failed")
+    else:
+        logger.info("No Textbelt API key provided, SMS services will be unavailable")
+    _services["textbelt_client"] = textbelt_client
     
     # Initialize content processing service
     content_processing_service = ContentProcessingService(
@@ -184,6 +197,10 @@ def get_elasticsearch_service() -> ElasticsearchService:
 def get_openai_client() -> OpenAIClient:
     """Get the OpenAI client."""
     return get_service("openai_client")
+
+def get_textbelt_client() -> TextbeltClient:
+    """Get the Textbelt client."""
+    return get_service("textbelt_client")
 
 def get_all_services() -> Dict[str, Any]:
     """Get all initialized services."""
