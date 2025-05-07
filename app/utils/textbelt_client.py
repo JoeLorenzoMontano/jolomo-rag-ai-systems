@@ -186,8 +186,23 @@ class TextbeltClient:
                 model=model or ollama_client.model
             )
             
+            # Log raw response for debugging
+            logging.info(f"Raw SMS generation response: {response}")
+            
             # Extract and sanitize the response text
-            response_text = response.get("response", "Sorry, I couldn't generate a response.")
+            # Handle both dictionary response and string response
+            if isinstance(response, dict):
+                if "message" in response:
+                    # New chat API format
+                    response_text = response["message"]["content"]
+                else:
+                    # Old format or custom format
+                    response_text = response.get("response", "Sorry, I couldn't generate a response.")
+            else:
+                # Response is already a string
+                response_text = response
+                
+            logging.info(f"Extracted response text: {response_text}")
             sanitized_response = self._sanitize_message(response_text)
             
             return sanitized_response
