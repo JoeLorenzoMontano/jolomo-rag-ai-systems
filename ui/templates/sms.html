@@ -61,6 +61,23 @@
                                                 </select>
                                             </div>
                                             
+                                            <div class="mb-3">
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" id="use-openai">
+                                                    <label class="form-check-label" for="use-openai">
+                                                        Use OpenAI API
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="mb-3" id="openai-options" style="display: none;">
+                                                <label for="assistant-select" class="form-label">OpenAI Assistant</label>
+                                                <select class="form-select" id="assistant-select">
+                                                    <option value="">None (Use GPT-3.5/4)</option>
+                                                    <!-- Assistants will be loaded dynamically -->
+                                                </select>
+                                            </div>
+                                            
                                             <div class="row mb-3">
                                                 <div class="col-md-6">
                                                     <div class="form-check form-switch">
@@ -237,6 +254,49 @@
                 console.error('Error loading models:', error);
             }
             
+            // Check if OpenAI is configured
+            try {
+                const isOpenAIConfigured = await OpenAI.isConfigured();
+                const useOpenAIToggle = document.getElementById('use-openai');
+                const openaiOptions = document.getElementById('openai-options');
+                const assistantSelect = document.getElementById('assistant-select');
+                
+                // Enable/disable OpenAI toggle based on configuration
+                useOpenAIToggle.disabled = !isOpenAIConfigured;
+                
+                // Load assistants if OpenAI is configured
+                if (isOpenAIConfigured) {
+                    // Show/hide OpenAI options when toggle is changed
+                    useOpenAIToggle.addEventListener('change', function() {
+                        openaiOptions.style.display = this.checked ? 'block' : 'none';
+                    });
+                    
+                    // Load assistants
+                    const assistantIds = await OpenAI.getAssistantIds();
+                    
+                    // Clear existing options except the default one
+                    while (assistantSelect.options.length > 1) {
+                        assistantSelect.remove(1);
+                    }
+                    
+                    // Add options for each assistant
+                    assistantIds.forEach((assistantId, index) => {
+                        const option = document.createElement('option');
+                        option.value = assistantId;
+                        option.textContent = `Assistant ${index + 1} (${assistantId.substring(0, 8)}...)`;
+                        assistantSelect.appendChild(option);
+                    });
+                } else {
+                    // Add message about OpenAI configuration if not available
+                    const configMessage = document.createElement('div');
+                    configMessage.className = 'form-text text-muted mt-2';
+                    configMessage.textContent = 'OpenAI is not configured. Visit the Configuration page to set up your API key.';
+                    useOpenAIToggle.parentNode.parentNode.appendChild(configMessage);
+                }
+            } catch (error) {
+                console.error('Error checking OpenAI configuration:', error);
+            }
+            
             // Check SMS quota on page load
             try {
                 await checkQuota();
@@ -283,6 +343,18 @@
                 // Add model if selected
                 if (modelSelect.value) {
                     requestData.model = modelSelect.value;
+                }
+                
+                // Add OpenAI options if enabled
+                const useOpenAIToggle = document.getElementById('use-openai');
+                if (useOpenAIToggle && useOpenAIToggle.checked) {
+                    requestData.use_openai = true;
+                    
+                    // Add assistant ID if selected
+                    const assistantSelect = document.getElementById('assistant-select');
+                    if (assistantSelect && assistantSelect.value) {
+                        requestData.assistant_id = assistantSelect.value;
+                    }
                 }
                 
                 try {

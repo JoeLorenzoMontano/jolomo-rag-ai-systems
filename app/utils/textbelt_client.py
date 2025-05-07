@@ -136,7 +136,9 @@ class TextbeltClient:
         query: str,
         context: str = "",
         model: Optional[str] = None,
-        ollama_client = None
+        ollama_client = None,
+        use_openai: bool = False,
+        assistant_id: Optional[str] = None
     ) -> str:
         """
         Generate a response suitable for SMS (shorter, no links).
@@ -146,15 +148,13 @@ class TextbeltClient:
             context: Relevant context from RAG results
             model: Model to use for generating the response
             ollama_client: Optional custom Ollama client
+            use_openai: Whether to use OpenAI instead of Ollama
+            assistant_id: Specific OpenAI assistant ID to use
             
         Returns:
             SMS-friendly response text
         """
-        from core.dependencies import get_ollama_client
-        
-        # Get or use provided Ollama client
-        if not ollama_client:
-            ollama_client = get_ollama_client()
+        from core.dependencies import get_ollama_client, get_openai_client
         
         # Create a system message prompting for SMS-friendly responses
         system_message = (
@@ -180,6 +180,54 @@ class TextbeltClient:
         messages.append({"role": "user", "content": query})
         
         try:
+            # Handle OpenAI generation if requested
+            if use_openai:
+                openai_client = get_openai_client()
+                if not openai_client:
+                    logging.error("OpenAI client unavailable, falling back to Ollama")
+                else:
+                    if assistant_id:
+                        # Use OpenAI Assistant API
+                        thread_messages = []
+                        # Add context as a separate message if available
+                        if context:
+                            thread_messages.append({
+                                "role": "user", 
+                                "content": f"Here's relevant information: {context}"
+                            })
+                        # Add the actual query
+                        thread_messages.append({
+                            "role": "user", 
+                            "content": f"{system_message}\n\n{query}"
+                        })
+                        
+                        response = openai_client.chat_with_assistant(
+                            assistant_id=assistant_id,
+                            messages=thread_messages
+                        )
+                        return response.get("response", "No response from Assistant.")
+                    else:
+                        # Use OpenAI Chat Completions API
+                        openai_messages = []
+                        # Convert our message format to OpenAI format
+                        for msg in messages:
+                            openai_messages.append({
+                                "role": msg["role"],
+                                "content": msg["content"]
+                            })
+                        
+                        openai_model = model or "gpt-3.5-turbo"
+                        response = openai_client.chat_completion(
+                            model=openai_model,
+                            messages=openai_messages
+                        )
+                        return response.get("message", {}).get("content", "No response from OpenAI.")
+            
+            # If not using OpenAI or OpenAI failed, use Ollama
+            # Get or use provided Ollama client
+            if not ollama_client:
+                ollama_client = get_ollama_client()
+                
             # Generate response using Ollama
             response = ollama_client.generate_chat_response(
                 messages=messages,

@@ -8,9 +8,9 @@ from fastapi import APIRouter, HTTPException, Depends
 import logging
 from typing import Dict, Any, Optional
 
-from core.dependencies import get_query_service, get_ollama_client, get_textbelt_client
+from core.dependencies import get_query_service, get_ollama_client, get_textbelt_client, get_openai_client
 from core.config import get_settings
-from models.schemas import SMSRequest, SMSResponse
+from models.schemas import SMSRequest, SMSResponse, ChatMessage
 from utils.textbelt_client import TextbeltClient
 
 router = APIRouter(tags=["sms"])
@@ -91,7 +91,9 @@ async def send_sms_response(
             query=sms_request.query,
             context=context,
             model=sms_request.model,
-            ollama_client=ollama_client
+            ollama_client=ollama_client,
+            use_openai=sms_request.use_openai,
+            assistant_id=sms_request.assistant_id
         )
         
         # Send the SMS
