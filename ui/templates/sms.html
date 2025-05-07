@@ -269,6 +269,17 @@
                 // Enable/disable OpenAI toggle based on configuration
                 useOpenAIToggle.disabled = !isOpenAIConfigured;
                 
+                // Add status indicator
+                const openaiStatus = document.createElement('div');
+                openaiStatus.className = isOpenAIConfigured ? 
+                    'alert alert-success mt-2 p-2' : 
+                    'alert alert-warning mt-2 p-2';
+                openaiStatus.style.fontSize = '0.8rem';
+                openaiStatus.textContent = isOpenAIConfigured ?
+                    'OpenAI API is configured and available' :
+                    'OpenAI API is not configured. Visit the Configure LLM APIs page to set it up.';
+                useOpenAIToggle.parentNode.parentNode.appendChild(openaiStatus);
+                
                 // Load assistants if OpenAI is configured
                 if (isOpenAIConfigured) {
                     // Show/hide OpenAI options when toggle is changed
@@ -364,9 +375,9 @@
                     requestData.model = modelSelect.value;
                 }
                 
-                // Add OpenAI options if enabled
+                // Add OpenAI options if enabled and configured
                 const useOpenAIToggle = document.getElementById('use-openai');
-                if (useOpenAIToggle && useOpenAIToggle.checked) {
+                if (useOpenAIToggle && useOpenAIToggle.checked && !useOpenAIToggle.disabled) {
                     requestData.use_openai = true;
                     
                     // Add assistant ID if selected
@@ -410,7 +421,13 @@
                     if (result.status === 'success') {
                         showAlert(`SMS sent successfully to ${phoneNumber}`, 'success');
                     } else {
-                        showAlert(`Error sending SMS: ${result.message}`, 'danger');
+                        // Check if this was an OpenAI error
+                        if (useOpenAIToggle && useOpenAIToggle.checked && 
+                            result.message && result.message.includes("OpenAI")) {
+                            showAlert(`OpenAI error: ${result.message}. Message was sent using Ollama as fallback.`, 'warning');
+                        } else {
+                            showAlert(`Error sending SMS: ${result.message}`, 'danger');
+                        }
                     }
                     
                 } catch (error) {

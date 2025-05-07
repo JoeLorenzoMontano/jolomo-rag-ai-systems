@@ -183,45 +183,50 @@ class TextbeltClient:
             # Handle OpenAI generation if requested
             if use_openai:
                 openai_client = get_openai_client()
-                if not openai_client:
-                    logging.error("OpenAI client unavailable, falling back to Ollama")
+                if not openai_client or not openai_client.is_available:
+                    logging.warning("OpenAI client unavailable, falling back to Ollama")
+                    logging.info("Using Ollama as fallback since OpenAI is not available")
                 else:
-                    if assistant_id:
-                        # Use OpenAI Assistant API
-                        thread_messages = []
-                        # Add context as a separate message if available
-                        if context:
+                    try:
+                        if assistant_id:
+                            # Use OpenAI Assistant API
+                            thread_messages = []
+                            # Add context as a separate message if available
+                            if context:
+                                thread_messages.append({
+                                    "role": "user", 
+                                    "content": f"Here's relevant information: {context}"
+                                })
+                            # Add the actual query
                             thread_messages.append({
                                 "role": "user", 
-                                "content": f"Here's relevant information: {context}"
+                                "content": f"{system_message}\n\n{query}"
                             })
-                        # Add the actual query
-                        thread_messages.append({
-                            "role": "user", 
-                            "content": f"{system_message}\n\n{query}"
-                        })
-                        
-                        response_text = openai_client.create_thread_with_assistant(
-                            messages=thread_messages,
-                            assistant_id=assistant_id
-                        )
-                        return response_text
-                    else:
-                        # Use OpenAI Chat Completions API
-                        openai_messages = []
-                        # Convert our message format to OpenAI format
-                        for msg in messages:
-                            openai_messages.append({
-                                "role": msg["role"],
-                                "content": msg["content"]
-                            })
-                        
-                        openai_model = model or "gpt-3.5-turbo"
-                        response_text = openai_client.create_chat_completion(
-                            model=openai_model,
-                            messages=openai_messages
-                        )
-                        return response_text
+                            
+                            response_text = openai_client.create_thread_with_assistant(
+                                messages=thread_messages,
+                                assistant_id=assistant_id
+                            )
+                            return response_text
+                        else:
+                            # Use OpenAI Chat Completions API
+                            openai_messages = []
+                            # Convert our message format to OpenAI format
+                            for msg in messages:
+                                openai_messages.append({
+                                    "role": msg["role"],
+                                    "content": msg["content"]
+                                })
+                            
+                            openai_model = model or "gpt-3.5-turbo"
+                            response_text = openai_client.create_chat_completion(
+                                model=openai_model,
+                                messages=openai_messages
+                            )
+                            return response_text
+                    except Exception as e:
+                        logging.error(f"Error using OpenAI: {str(e)}")
+                        logging.info("Falling back to Ollama due to OpenAI error")
             
             # If not using OpenAI or OpenAI failed, use Ollama
             # Get or use provided Ollama client
