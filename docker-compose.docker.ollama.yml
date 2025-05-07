@@ -1,6 +1,7 @@
 services:
   api:
     build: ./app
+    image: jolomo/rag-api:latest
     container_name: document-processing-service
     restart: always
     ports:
@@ -37,6 +38,7 @@ services:
       
   ui:
     build: ./ui
+    image: jolomo/rag-ui:latest
     container_name: document-ui-service
     restart: always
     ports:
