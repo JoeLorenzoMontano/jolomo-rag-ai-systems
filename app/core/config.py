@@ -36,6 +36,9 @@ SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_ASSISTANT_IDS = os.getenv("OPENAI_ASSISTANT_IDS", "").split(",") if os.getenv("OPENAI_ASSISTANT_IDS") else []
 
+# SMS API configuration
+TEXTBELT_API_KEY = os.getenv("TEXTBELT_API_KEY")
+
 # Folder to store raw documents
 DOCS_FOLDER = os.getenv("DOCS_FOLDER", "./data")
 
@@ -65,7 +68,8 @@ def get_settings() -> Dict[str, Any]:
         "max_retries": MAX_RETRIES,
         "retry_delay": RETRY_DELAY,
         "openai_api_key": OPENAI_API_KEY,
-        "openai_assistant_ids": OPENAI_ASSISTANT_IDS
+        "openai_assistant_ids": OPENAI_ASSISTANT_IDS,
+        "textbelt_api_key": TEXTBELT_API_KEY
     }
 
 def log_config() -> None:
@@ -83,3 +87,4 @@ def log_config() -> None:
     logging.info(f"  DB Connection: max_retries={MAX_RETRIES}, retry_delay={RETRY_DELAY}s")
     logging.info(f"  OpenAI integration: {bool(OPENAI_API_KEY)}")
     logging.info(f"  OpenAI Assistant IDs: {', '.join(OPENAI_ASSISTANT_IDS) if OPENAI_ASSISTANT_IDS else 'Not configured'}")
+    logging.info(f"  SMS integration: {bool(TEXTBELT_API_KEY)}")

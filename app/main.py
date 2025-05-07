@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import log_config
 from core.dependencies import get_all_services
-from routers import health, documents, query, jobs, terms
+from routers import health, documents, query, jobs, terms, sms
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -34,11 +34,12 @@ app.include_router(documents.router)
 app.include_router(query.router)
 app.include_router(jobs.router)
 app.include_router(terms.router)
+app.include_router(sms.router)
 
 @app.get("/", summary="Root endpoint", description="Returns a simple message indicating the API is running.")
 async def root():
     """Root endpoint that returns a simple status message."""
-    return {"message": "Document Processing API is running"}
+    return {"message": "Document Processing API is running with SMS capabilities enabled"}
 
 @app.get("/openapi.json", include_in_schema=False)
 def custom_openapi():
@@ -46,7 +47,7 @@ def custom_openapi():
     return get_openapi(
         title="Document Processing API",
         version="1.0",
-        description="API for processing and retrieving documents using embeddings.",
+        description="API for processing and retrieving documents using embeddings, with SMS capabilities.",
         routes=app.routes,
     )
 

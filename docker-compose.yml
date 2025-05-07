@@ -27,6 +27,8 @@ services:
       # Elasticsearch configuration
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-true}
+      # SMS API configuration
+      - TEXTBELT_API_KEY=${TEXTBELT_API_KEY}
     networks:
       - app-network
       
