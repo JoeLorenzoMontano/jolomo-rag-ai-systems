@@ -7,5 +7,5 @@ nltk>=3.8.1
 python-multipart>=0.0.6
 PyPDF2>=3.0.0
 pdfminer.six>=20221105  # Better PDF text extraction alternative
-elasticsearch>=8.10.0  # Elasticsearch client
+elasticsearch==8.9.0  # Elasticsearch client (fixed version for compatibility)
 langchain>=0.0.267  # For document reranking

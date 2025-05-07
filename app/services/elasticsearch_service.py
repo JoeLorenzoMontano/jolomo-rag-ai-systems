@@ -38,11 +38,16 @@ class ElasticsearchService:
         for attempt in range(self.max_retries):
             try:
                 self.logger.info(f"Connection attempt {attempt + 1} to Elasticsearch at {self.url}...")
-                # Create basic client with minimal parameters to avoid compatibility issues
+                # Create client with specific headers to fix version compatibility issues
+                headers = {
+                    "accept": "application/vnd.elasticsearch+json; compatible-with=8",
+                    "content-type": "application/vnd.elasticsearch+json; compatible-with=8"
+                }
                 self.client = Elasticsearch(
                     self.url, 
                     retry_on_timeout=True,
-                    request_timeout=30  # Increased timeout
+                    request_timeout=30,  # Increased timeout
+                    headers=headers  # Explicitly set compatible headers
                 )
                 
                 # Test connection with info request
