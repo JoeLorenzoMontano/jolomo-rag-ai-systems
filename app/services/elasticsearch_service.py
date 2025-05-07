@@ -42,7 +42,8 @@ class ElasticsearchService:
                     self.url, 
                     retry_on_timeout=True,
                     request_timeout=30,  # Increased timeout
-                    max_retries=5  # Add retry at the client level
+                    max_retries=5,  # Add retry at the client level
+                    api_version="8"  # Fix compatibility issue between client and server
                 )
                 
                 # Test connection with info request
