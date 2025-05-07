@@ -36,13 +36,18 @@ curl -s "${OLLAMA_BASE_URL}/api/tags"
 # Define embedding model
 EMBEDDING_MODEL=${EMBEDDING_MODEL:-"all-minilm:l6-v2"}
 
-# Make sure our main model is available
-echo "Ensuring main model (${MODEL}) is available..."
-curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${MODEL}\"}"
+# Model download code commented out - models should be pre-installed
+# This significantly reduces container startup time and build size
 
-# Make sure our embedding model is available
-echo "Ensuring embedding model (${EMBEDDING_MODEL}) is available..."
-curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${EMBEDDING_MODEL}\"}"
+# # Make sure our main model is available
+# echo "Ensuring main model (${MODEL}) is available..."
+# curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${MODEL}\"}"
+# 
+# # Make sure our embedding model is available
+# echo "Ensuring embedding model (${EMBEDDING_MODEL}) is available..."
+# curl -s -X POST "${OLLAMA_BASE_URL}/api/pull" -d "{\"name\":\"${EMBEDDING_MODEL}\"}"
+
+echo "Skipping model downloads - using pre-installed models"
 
 # Test embed endpoint with the embedding model
 echo "Testing /api/embed endpoint with ${EMBEDDING_MODEL}:"

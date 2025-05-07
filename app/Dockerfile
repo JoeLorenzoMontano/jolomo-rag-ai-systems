@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
 
 # Set working directory
 WORKDIR /build
@@ -10,27 +10,27 @@ RUN apt-get update && \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.txt .
+# Copy requirements files
+COPY requirements.txt requirements-slim.txt requirements-optional.txt ./
 
-# Create a virtual environment and install dependencies
+# Create a virtual environment and install only essential dependencies
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-slim.txt
 
-# Final stage
-FROM python:3.11-slim
+# Final stage - use smaller Debian base
+FROM python:3.11-slim-bookworm
 
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies only
+# Install runtime dependencies only, with cleaner apt command to reduce layers
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
     iputils-ping \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder stage
 COPY --from=builder /venv /venv
